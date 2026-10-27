@@ -726,6 +726,163 @@ function cabeloPalhaco(ctx, R, a) {
   ctx.restore();
 }
 
+// ===================== deformação do formato do rosto =====================
+// Cada monstro define um deslocamento (du, dv) para cada ponto do rosto, a partir da posição
+// dele no mapa UV (u: 0 = lado A, 1 = lado B; v: 0.1 = topo da testa, 0.95 = queixo).
+// du é medido em larguras de rosto e dv em alturas de rosto. Como é calculado sobre os pontos
+// reais da pessoa, os traços e expressões dela continuam lá; só o formato muda.
+const gs = (u, v, cu, cv, su, sv) => Math.exp(-(((u - cu) / su) ** 2 + ((v - cv) / sv) ** 2));
+const suave = (a, b, x) => { const k = clamp01((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const OLHOS_UV = [[0.345, 0.385], [0.655, 0.385]];
+
+function ampliarOlhos(u, v, fator, alongarY = 1, desce = 0) {
+  let du = 0, dv = 0;
+  OLHOS_UV.forEach(([cu, cv]) => {
+    const w = gs(u, v, cu, cv, 0.1, 0.075);
+    du += (u - cu) * fator * w;
+    dv += (v - cv) * fator * alongarY * w + desce * w;
+  });
+  return [du, dv];
+}
+
+const DEFORMACOES = {
+  lobisomem(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let du = 0, dv = 0;
+    // focinho: nariz e boca descem e alargam
+    dv += 0.07 * gs(u, v, 0.5, 0.66, 0.2, 0.16);
+    du += l * 0.45 * gs(u, v, 0.5, 0.58, 0.12, 0.06);
+    du += l * 0.35 * gs(u, v, 0.5, 0.7, 0.16, 0.06);
+    // mandíbula mais comprida e larga
+    const baixo = suave(0.6, 0.95, v);
+    dv += 0.1 * baixo;
+    du += l * 0.28 * baixo;
+    // testa mais baixa, sobrancelha pesada e mais junta
+    dv += 0.05 * suave(0.35, 0.1, v);
+    dv += 0.03 * gs(u, v, 0.5, 0.27, 0.3, 0.05);
+    du -= l * 0.15 * gs(u, v, 0.5, 0.27, 0.25, 0.05);
+    // olhos puxados (canto externo sobe) e maçãs largas
+    dv -= 0.035 * gs(al, v, 0.22, 0.375, 0.06, 0.04);
+    du += sl * 0.05 * gs(al, v, 0.35, 0.6, 0.15, 0.15);
+    return [du, dv];
+  },
+  vampiro(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let du = 0, dv = 0;
+    // queixo fino e pontudo
+    const queixo = suave(0.72, 0.96, v);
+    du -= l * 0.4 * queixo;
+    dv += 0.05 * queixo * gs(u, v, 0.5, 0.95, 0.12, 0.2);
+    // bochechas encovadas e maçãs altas
+    du -= sl * 0.04 * gs(al, v, 0.3, 0.67, 0.12, 0.1);
+    du += sl * 0.025 * gs(al, v, 0.3, 0.5, 0.1, 0.06);
+    // sobrancelhas arqueadas e olhos puxados
+    dv -= 0.04 * gs(al, v, 0.22, 0.28, 0.08, 0.05);
+    dv -= 0.018 * gs(al, v, 0.22, 0.375, 0.05, 0.04);
+    return [du, dv];
+  },
+  zumbi(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let du = 0, dv = 0;
+    // mandíbula caída e torta (o lado A cai mais)
+    const baixo = suave(0.62, 0.95, v);
+    dv += baixo * (0.05 + 0.08 * (0.5 - u));
+    du += 0.035 * baixo;
+    // canto da boca e olho do lado A caídos
+    dv += 0.035 * gs(u, v, 0.38, 0.7, 0.06, 0.05);
+    dv += 0.03 * gs(u, v, 0.32, 0.4, 0.07, 0.035);
+    // bochechas murchas e têmporas fundas
+    du -= sl * 0.035 * gs(al, v, 0.3, 0.62, 0.12, 0.1);
+    du -= sl * 0.02 * gs(al, v, 0.45, 0.35, 0.08, 0.12);
+    return [du, dv];
+  },
+  caveira(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let [du, dv] = ampliarOlhos(u, v, 0.55);
+    // bochechas bem fundas, rosto estreito embaixo, nariz menor
+    du -= sl * 0.06 * gs(al, v, 0.3, 0.64, 0.14, 0.12);
+    const baixo = suave(0.6, 0.95, v);
+    du -= l * 0.25 * baixo;
+    dv += 0.03 * baixo;
+    du -= l * 0.4 * gs(u, v, 0.5, 0.58, 0.1, 0.05);
+    return [du, dv];
+  },
+  fantasma(u, v) {
+    const l = u - 0.5;
+    let [du, dv] = ampliarOlhos(u, v, 0.35, 2.2, 0.025);
+    // rosto derretendo: tudo abaixo dos olhos estica para baixo e afina
+    const s = suave(0.42, 0.95, v);
+    dv += 0.14 * s;
+    du -= l * 0.15 * s;
+    // boca aberta num grito: lábio inferior e queixo descem mais
+    dv += 0.07 * suave(0.69, 0.72, v) * gs(u, v, 0.5, 0.8, 0.14, 0.12);
+    return [du, dv];
+  },
+  palhaco(u, v) {
+    const l = u - 0.5, al = Math.abs(l);
+    let [du, dv] = ampliarOlhos(u, v, 0.35);
+    // sorriso esticado: cantos da boca para fora e para cima
+    [[0.382, -1], [0.618, 1]].forEach(([cu, lado]) => {
+      const w = gs(u, v, cu, 0.695, 0.07, 0.05);
+      du += lado * 0.07 * w;
+      dv -= 0.05 * w;
+    });
+    dv -= 0.03 * gs(al, v, 0.25, 0.58, 0.12, 0.1);
+    // testa grande e arredondada
+    dv -= 0.06 * suave(0.3, 0.1, v);
+    du += l * 0.12 * suave(0.35, 0.1, v);
+    return [du, dv];
+  },
+};
+
+// desloca os pontos reais do rosto (lm normalizado, não espelhado) conforme o monstro e a força k (0 a 1)
+export function deformarRosto(lm, monstro, k, W, H) {
+  const D = monstro.deslocamentos;
+  if (!D || k <= 0) return lm;
+  const ex = [(lm[454].x - lm[234].x) * W, (lm[454].y - lm[234].y) * H];
+  const ey = [(lm[152].x - lm[10].x) * W, (lm[152].y - lm[10].y) * H];
+  const saida = new Array(lm.length);
+  for (let i = 0; i < lm.length; i++) {
+    // íris (468+) acompanham o olho mais próximo
+    const j = i < 468 ? i : (Math.abs(lm[i].x - lm[33].x) < Math.abs(lm[i].x - lm[263].x) ? 159 : 386);
+    const du = D[j * 2] * k, dv = D[j * 2 + 1] * k;
+    saida[i] = { x: lm[i].x + (du * ex[0] + dv * ey[0]) / W, y: lm[i].y + (du * ex[1] + dv * ey[1]) / H, z: lm[i].z };
+  }
+  return saida;
+}
+
+// orelhas pontudas de vampiro (cor de pele pálida)
+function orelhasVampiro(ctx, R, a) {
+  if (a <= 0.3) return;
+  const k = fase(a, 0.3, 0.5);
+  [-1, 1].forEach((lado) => {
+    const b1 = R.local(lado * 0.45, -0.08), b2 = R.local(lado * 0.44, 0.18);
+    const ponta = R.local(lado * (0.5 + 0.2 * k), -0.08 - 0.3 * k);
+    const meio = R.local(lado * (0.55 + 0.05 * k), 0.08);
+    ctx.save();
+    const g = ctx.createLinearGradient(...b1, ...ponta);
+    g.addColorStop(0, 'rgba(200,200,215,0.95)');
+    g.addColorStop(1, 'rgba(230,228,240,0.95)');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = 'rgba(70,50,70,0.6)';
+    ctx.lineWidth = Math.max(1, R.fw * 0.006);
+    ctx.beginPath();
+    ctx.moveTo(...b1);
+    ctx.quadraticCurveTo(...mix(b1, ponta, 0.5).map((c, i) => c + (i ? 0 : lado * R.fw * 0.02)), ...ponta);
+    ctx.quadraticCurveTo(...meio, ...b2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // dobra interna
+    ctx.strokeStyle = 'rgba(120,80,100,0.5)';
+    ctx.beginPath();
+    ctx.moveTo(...mix(b1, b2, 0.5));
+    ctx.quadraticCurveTo(...mix(meio, ponta, 0.4), ...mix(ponta, b1, 0.25));
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
 // ============================ os monstros ============================
 const GOTAS_ZUMBI = [
   { ponto: 61, inicio: 0.3, comp: 0.26, larg: 0.018 },
@@ -750,6 +907,7 @@ export const MONSTROS = [
     frase: 'VOCÊ FOI MORDIDO', som: 'sibilo',
     filtro: (a) => `saturate(${1 - 0.6 * a}) contrast(${1 + 0.2 * a}) brightness(${1 - 0.1 * a}) sepia(${0.15 * a}) hue-rotate(${-15 * a}deg)`,
     pintar: pintarVampiro,
+    antes(ctx, R, a) { orelhasVampiro(ctx, R, a); },
     depois(ctx, R, a, t) {
       R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.45, 0.4), 'rgba(255,20,40,A)', 'ponto', t));
       const k = fase(a, 0.55, 0.35);
@@ -811,6 +969,18 @@ export const MONSTROS = [
     },
   },
 ];
+
+// pré-calcula o deslocamento de cada ponto (só depende da posição dele no mapa UV)
+MONSTROS.forEach((m) => {
+  const f = DEFORMACOES[m.id];
+  if (!f) return;
+  m.deslocamentos = new Float32Array(UV.length * 2);
+  UV.forEach(([u, v], i) => {
+    const [du, dv] = f(u, v);
+    m.deslocamentos[i * 2] = du;
+    m.deslocamentos[i * 2 + 1] = dv;
+  });
+});
 
 export function criarTexturas() {
   return MONSTROS.map((m) => {

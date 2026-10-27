@@ -1,8 +1,15 @@
 // Renderização em WebGL:
 //  1) copia a cena 2D (fundo + pessoa) para um framebuffer;
-//  2) desenha a malha 3D de cada rosto com a textura do monstro, preservando a luz real da pele;
+//  2) para cada rosto, desenha a malha deformada (formato do monstro) amostrando os pixels
+//     originais do rosto, e depois a textura do monstro, preservando a luz real da pele;
 //  3) aplica o filtro anos 90 (VHS / PS1 / CCTV) misturando a camada de efeitos 2D por cima.
 import { UV, TRIANGULOS } from './malha.js';
+
+const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377,
+  152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+const N = UV.length;                 // 468 pontos do rosto
+const NV = N + FACE_OVAL.length;     // + anel externo de transição
+const ESCALA_ANEL = 1.45;            // o anel fica fora do rosto e não se move: a deformação "estica" até ele
 
 // Triângulos que fecham os olhos e a boca: removidos para os olhos e a boca reais aparecerem.
 const BURACOS = [
@@ -11,7 +18,8 @@ const BURACOS = [
   [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191],
 ].map((a) => new Set(a));
 
-function indicesDaMalha() {
+// pele: malha sem os buracos dos olhos e da boca (onde a textura do monstro é pintada)
+function indicesPele() {
   const saida = [];
   for (let i = 0; i < TRIANGULOS.length; i += 3) {
     const tri = [TRIANGULOS[i], TRIANGULOS[i + 1], TRIANGULOS[i + 2]];
@@ -19,6 +27,30 @@ function indicesDaMalha() {
     saida.push(...tri);
   }
   return new Uint16Array(saida);
+}
+
+// tudo: malha completa + faixa entre o contorno do rosto e o anel externo (usada para deformar)
+function indicesTudo() {
+  const saida = [...TRIANGULOS];
+  const K = FACE_OVAL.length;
+  for (let k = 0; k < K; k++) {
+    const a = FACE_OVAL[k], b = FACE_OVAL[(k + 1) % K];
+    const A = N + k, B = N + ((k + 1) % K);
+    saida.push(a, b, A, b, B, A);
+  }
+  return new Uint16Array(saida);
+}
+
+// UV com v invertido porque as texturas sobem com UNPACK_FLIP_Y; o anel usa UV fora do rosto (transparente)
+function uvsDaMalha() {
+  const uv = new Float32Array(NV * 2);
+  UV.forEach(([u, v], i) => { uv[i * 2] = u; uv[i * 2 + 1] = 1 - v; });
+  FACE_OVAL.forEach((o, k) => {
+    const [u, v] = UV[o];
+    uv[(N + k) * 2] = 0.5 + (u - 0.5) * 1.35;
+    uv[(N + k) * 2 + 1] = 1 - (0.5 + (v - 0.5) * 1.35);
+  });
+  return uv;
 }
 
 const VS_QUAD = `
@@ -32,14 +64,16 @@ varying vec2 uv;
 uniform sampler2D tex;
 void main() { gl_FragColor = vec4(texture2D(tex, uv).rgb, 1.0); }`;
 
+// aPos: onde o ponto é desenhado (deformado); aOrig: de onde vêm os pixels (posição real do rosto)
 const VS_ROSTO = `
 attribute vec3 aPos;
+attribute vec2 aOrig;
 attribute vec2 aUV;
 varying vec2 vUV;
 varying vec2 vTela;
 void main() {
   vUV = aUV;
-  vTela = aPos.xy * 0.5 + 0.5;
+  vTela = aOrig * 0.5 + 0.5;
   gl_Position = vec4(aPos, 1.0);
 }`;
 
@@ -51,6 +85,7 @@ uniform sampler2D cena;
 uniform sampler2D monstro;
 uniform float prog;
 uniform vec3 brilho;
+uniform float usarTextura;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float ruido(vec2 p) {
@@ -61,6 +96,7 @@ float ruido(vec2 p) {
 
 void main() {
   vec4 m = texture2D(monstro, vUV);
+  m.a *= usarTextura;
   vec3 base = texture2D(cena, vTela).rgb;
   // luz e sombra da pele real modulam a textura (o rosto continua "3D")
   float L = dot(base, vec3(0.299, 0.587, 0.114));
@@ -182,18 +218,45 @@ export function criarRenderizador(canvas) {
   gl.bindBuffer(gl.ARRAY_BUFFER, bQuad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
 
-  // UV com v invertido porque as texturas sobem com UNPACK_FLIP_Y
   const bUV = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, bUV);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(UV.flatMap(([u, v]) => [u, 1 - v])), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, uvsDaMalha(), gl.STATIC_DRAW);
 
-  const indices = indicesDaMalha();
-  const bIdx = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bIdx);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  const criarIndices = (dados) => {
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, dados, gl.STATIC_DRAW);
+    return { b, n: dados.length };
+  };
+  const idxPele = criarIndices(indicesPele());
+  const idxTudo = criarIndices(indicesTudo());
 
   const bPos = gl.createBuffer();
-  const posicoes = new Float32Array(UV.length * 3);
+  const bOrig = gl.createBuffer();
+  const posicoes = new Float32Array(NV * 3);
+  const origens = new Float32Array(NV * 2);
+
+  // preenche os buffers de um rosto: def = pontos deformados, orig = pontos reais (normalizados, não espelhados)
+  const prepararRosto = (orig, def) => {
+    let cx = 0, cy = 0;
+    for (let i = 0; i < N; i++) {
+      const o = orig[i], d = def[i];
+      posicoes[i * 3] = 1 - 2 * d.x;          // espelhado
+      posicoes[i * 3 + 1] = 1 - 2 * d.y;
+      posicoes[i * 3 + 2] = Math.max(-0.99, Math.min(0.99, d.z * 4));
+      origens[i * 2] = 1 - 2 * o.x;
+      origens[i * 2 + 1] = 1 - 2 * o.y;
+    }
+    FACE_OVAL.forEach((o) => { cx += origens[o * 2]; cy += origens[o * 2 + 1]; });
+    cx /= FACE_OVAL.length; cy /= FACE_OVAL.length;
+    FACE_OVAL.forEach((o, k) => {
+      const j = N + k;
+      const x = cx + (origens[o * 2] - cx) * ESCALA_ANEL;
+      const y = cy + (origens[o * 2 + 1] - cy) * ESCALA_ANEL;
+      posicoes[j * 3] = x; posicoes[j * 3 + 1] = y; posicoes[j * 3 + 2] = posicoes[o * 3 + 2];
+      origens[j * 2] = x; origens[j * 2 + 1] = y;
+    });
+  };
 
   const novaTextura = () => {
     const t = gl.createTexture();
@@ -252,7 +315,7 @@ export function criarRenderizador(canvas) {
       return t;
     },
 
-    // rostos: listas de pontos normalizados {x, y, z} do MediaPipe (não espelhados)
+    // rostos: [{ orig, def }] com pontos normalizados {x, y, z} do MediaPipe (não espelhados)
     desenhar({ cena, sobre, rostos, textura, prog, brilho, tempo, modo, glitch }) {
       enviar(tCena, cena);
 
@@ -283,23 +346,34 @@ export function criarRenderizador(canvas) {
         gl.enableVertexAttribArray(aUV);
         gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
         const aPos = pRosto.a('aPos');
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bIdx);
+        const aOrig = pRosto.a('aOrig');
 
-        for (const lm of rostos) {
-          gl.clear(gl.DEPTH_BUFFER_BIT);
-          for (let i = 0; i < UV.length; i++) {
-            const p = lm[i];
-            posicoes[i * 3] = 1 - 2 * p.x;          // espelhado
-            posicoes[i * 3 + 1] = 1 - 2 * p.y;
-            posicoes[i * 3 + 2] = Math.max(-0.99, Math.min(0.99, p.z * 4));
-          }
+        for (const { orig, def } of rostos) {
+          prepararRosto(orig, def);
           gl.bindBuffer(gl.ARRAY_BUFFER, bPos);
           gl.bufferData(gl.ARRAY_BUFFER, posicoes, gl.DYNAMIC_DRAW);
           gl.enableVertexAttribArray(aPos);
           gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
-          gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, bOrig);
+          gl.bufferData(gl.ARRAY_BUFFER, origens, gl.DYNAMIC_DRAW);
+          gl.enableVertexAttribArray(aOrig);
+          gl.vertexAttribPointer(aOrig, 2, gl.FLOAT, false, 0, 0);
+
+          gl.clear(gl.DEPTH_BUFFER_BIT);
+          // passada 1: só deforma (pixels reais do rosto, olhos e boca inclusive)
+          gl.depthFunc(gl.LESS);
+          gl.uniform1f(pRosto.u('usarTextura'), 0);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxTudo.b);
+          gl.drawElements(gl.TRIANGLES, idxTudo.n, gl.UNSIGNED_SHORT, 0);
+          // passada 2: textura do monstro na pele
+          gl.depthFunc(gl.LEQUAL);
+          gl.uniform1f(pRosto.u('usarTextura'), 1);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxPele.b);
+          gl.drawElements(gl.TRIANGLES, idxPele.n, gl.UNSIGNED_SHORT, 0);
         }
         gl.disableVertexAttribArray(aUV);
+        gl.disableVertexAttribArray(aOrig);
+        gl.depthFunc(gl.LESS);
         gl.disable(gl.DEPTH_TEST);
       }
 

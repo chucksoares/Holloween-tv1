@@ -1,6 +1,6 @@
 import { FaceLandmarker, FilesetResolver, ImageSegmenter } from './vendor/vision_bundle.mjs';
 import { criarRenderizador } from './render.js';
-import { MONSTROS, criarTexturas, geometria, mulberry32 } from './monstros.js';
+import { MONSTROS, criarTexturas, geometria, mulberry32, deformarRosto } from './monstros.js';
 
 // ============================ CONFIGURAÇÃO ============================
 const CONFIG = {
@@ -13,6 +13,7 @@ const CONFIG = {
   maxRostos: 4,
   trocarCenarioPorPessoa: true,        // sorteia um cenário novo a cada pessoa que chega
   logo: 'marca/logo-tv1.png',          // logo exibido na tela e nas fotos
+  intensidadeDeformacao: 1,            // quanto o formato do rosto muda (0 = nada, 1 = normal, 1.5 = exagerado)
 };
 
 const MODOS = ['VHS', 'PS1', 'CCTV'];
@@ -718,7 +719,11 @@ function quadro(agora) {
     if (segmentador && cenarioAtual >= 0 && (quadrosVideo % 2 === 0 || !mascaraPronta)) atualizarMascaraPessoa(agora);
   }
   const t1 = performance.now();
-  geos = suavizados.map((lm) => geometria(lm, W, H));
+  // o formato do rosto muda junto com a transformação
+  const mAtual = monstro();
+  const forca = (() => { const k = Math.max(0, Math.min(1, (progresso() - 0.1) / 0.7)); return k * k * (3 - 2 * k); })();
+  const deformados = suavizados.map((lm) => deformarRosto(lm, mAtual, forca * CONFIG.intensidadeDeformacao, W, H));
+  geos = deformados.map((lm) => geometria(lm, W, H));
   atualizarRoleta();
   atualizarInfeccao(dt);
   atualizarFoto();
@@ -727,7 +732,7 @@ function quadro(agora) {
   const m = monstro();
   const i = MONSTROS.indexOf(m);
   render.desenhar({
-    cena: comp, sobre, rostos: suavizados, textura: texturas[i], prog: progresso(),
+    cena: comp, sobre, rostos: suavizados.map((orig, j) => ({ orig, def: deformados[j] })), textura: texturas[i], prog: progresso(),
     brilho: m.brilho, tempo: t, modo, glitch,
   });
   if (foto.fase === 'disparo') capturarFoto();
