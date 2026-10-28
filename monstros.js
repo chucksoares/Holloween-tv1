@@ -196,7 +196,91 @@ function costura(g, p1, p2, cor = 'rgba(25,15,15,0.95)') {
   g.restore();
 }
 
+// rachaduras em brasa: o mesmo caminho (mesma semente) desenhado largo e escuro, depois fino e incandescente
+function rachadurasUV(g, semente, sementes) {
+  veiasUV(g, semente, sementes, 'rgba(25,3,0,0.9)', 11);
+  veiasUV(g, semente, sementes, 'rgba(255,110,20,0.95)', 3.5);
+}
+
+// partes de caveira (usadas no cadáver)
+function orbitaUV(g, olho, r) {
+  const oc = centroUV(olho), w = larguraOlhoUV(olho);
+  const cx = oc[0], cy = oc[1] - w * 0.12, rx = w * 0.95, ry = w * 0.82;
+  const pts = Array.from({ length: 24 }, (_, k) => {
+    const ang = (k / 24) * Math.PI * 2;
+    const j = 0.9 + r() * 0.18;
+    return [cx + Math.cos(ang) * rx * j, cy + Math.sin(ang) * ry * j];
+  });
+  g.save();
+  g.filter = 'blur(3px)';
+  const gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
+  gr.addColorStop(0, '#000');
+  gr.addColorStop(0.75, '#0b0806');
+  gr.addColorStop(1, '#2a221a');
+  g.fillStyle = gr;
+  g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill();
+  g.restore();
+}
+
+function narizCaveiraUV(g) {
+  const n1 = U(98), n2 = U(327), ponta = U(195), base = mix(U(2), U(4), 0.3);
+  g.save();
+  g.fillStyle = '#0a0705';
+  g.filter = 'blur(1.5px)';
+  g.beginPath();
+  g.moveTo(...ponta);
+  g.quadraticCurveTo(n1[0] - 10, n1[1] - 30, n1[0], base[1]);
+  g.quadraticCurveTo(base[0], base[1] + 18, n2[0], base[1]);
+  g.quadraticCurveTo(n2[0] + 10, n2[1] - 30, ...ponta);
+  g.fill();
+  g.restore();
+}
+
+function dentesCaveiraUV(g) {
+  labios(g, '#e3dccb');
+  const ca = U(61), cb = U(291);
+  const ext = [(cb[0] - ca[0]) * 0.28, (cb[1] - ca[1]) * 0.28];
+  const p1 = [ca[0] - ext[0], ca[1] - ext[1]], p2 = [cb[0] + ext[0], cb[1] + ext[1]];
+  const alt = dist(U(0), U(17)) * 0.75;
+  g.save();
+  g.strokeStyle = '#120c08';
+  g.lineCap = 'round';
+  g.lineWidth = 5;
+  g.beginPath(); g.moveTo(...p1); g.quadraticCurveTo(...mix(U(13), U(14), 0.5), ...p2); g.stroke();
+  g.lineWidth = 3.5;
+  for (let k = 0; k <= 12; k++) {
+    const [x, y] = mix(p1, p2, k / 12);
+    const h = alt * (1 - Math.pow(Math.abs(k / 12 - 0.5) * 2, 3) * 0.6);
+    g.beginPath(); g.moveTo(x, y - h * 0.55); g.lineTo(x, y + h * 0.55); g.stroke();
+  }
+  g.restore();
+}
+
 // --------------------------- texturas ---------------------------
+function pintarPossuido(g) {
+  baseRosto(g, '#8f8a80');
+  manchas(g, 18, [55, 40, 45], 0.65, 101, 1.3, 14);
+  manchas(g, 60, [120, 35, 30], 0.35, 102, 2, 3);
+  manchas(g, 150, [30, 25, 25], 0.4, 103, 2.2, 1);
+  const c = centroUV(FACE_OVAL);
+  elipse(g, c[0], c[1], S * 0.55, S * 0.55, 'rgba(25,5,10,0)', 'rgba(25,5,10,0.85)');
+  // maçãs do rosto fundas
+  [[50, 172, 0.55], [280, 397, -0.55]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.45); elipse(g, p[0], p[1], S * 0.12, S * 0.05, 'rgba(30,10,15,0.7)', null, ang); });
+  // olhos afundados e veias negras saindo deles
+  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(40,0,10,0.95)', 1.8, 0.05); olheira(g, o, 'rgba(0,0,0,1)', 1.1, 0.05); });
+  veiasUV(g, 104, [[33, Math.PI, 0.14], [145, 1.9, 0.13], [159, -1.9, 0.12], [263, 0, 0.14], [374, 1.2, 0.13], [386, -1.2, 0.12]], 'rgba(15,0,8,0.92)', 5);
+  veiasUV(g, 105, [[61, 2.4, 0.12], [291, 0.7, 0.12], [152, -1.6, 0.08]], 'rgba(20,0,10,0.85)', 3.5);
+  // rachaduras em brasa descendo pela testa e pelo queixo
+  rachadurasUV(g, 106, [[10, 1.7, 0.18], [54, 1.0, 0.14], [284, 2.1, 0.14], [172, -0.8, 0.12], [397, -2.3, 0.12]]);
+  sobrancelha(g, SOBR_A, SOBR_A_INF, 'rgba(10,0,0,0.95)', 7);
+  sobrancelha(g, SOBR_B, SOBR_B_INF, 'rgba(10,0,0,0.95)', 7);
+  labios(g, 'rgba(20,0,5,1)');
+  g.save();
+  g.strokeStyle = 'rgba(90,0,10,0.9)'; g.lineWidth = 2;
+  for (let k = 0; k < 9; k++) { const p = mix(U(61), U(291), 0.1 + k * 0.1); g.beginPath(); g.moveTo(p[0], p[1] - 12); g.lineTo(p[0] + 3, p[1] + 12); g.stroke(); }
+  g.restore();
+}
+
 function pintarZumbi(g) {
   baseRosto(g, '#7f9670');
   manchas(g, 16, [90, 35, 80], 0.75, 11, 1.3, 16);
@@ -227,181 +311,51 @@ function pintarZumbi(g) {
   elipse(g, ...U(327), 14, 10, 'rgba(10,0,0,0.8)');
 }
 
-function pintarVampiro(g) {
-  baseRosto(g, '#e8ebf2');
-  manchas(g, 28, [170, 180, 215], 0.35, 21, 1.4, 12);
-  manchas(g, 90, [200, 200, 215], 0.25, 22, 2, 1.5);
+function pintarFreira(g) {
+  baseRosto(g, '#ebe8e1');
+  manchas(g, 30, [160, 155, 150], 0.4, 111, 1.5, 10);
+  manchas(g, 100, [120, 115, 115], 0.25, 112, 2.2, 1.5);
   const c = centroUV(FACE_OVAL);
-  elipse(g, c[0], c[1], S * 0.56, S * 0.56, 'rgba(70,60,90,0)', 'rgba(70,60,90,0.55)');
-  // contorno marcado das maçãs do rosto
-  [[50, 172, 0.55], [280, 397, -0.55]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.4); elipse(g, p[0], p[1], S * 0.11, S * 0.035, 'rgba(70,45,80,0.6)', null, ang); });
-  [[127, 54], [356, 284]].forEach(([a, b]) => { const p = mix(U(a), U(b), 0.5); elipse(g, p[0], p[1], S * 0.06, S * 0.1, 'rgba(80,60,100,0.45)'); });
-  // laterais do nariz
-  [[193, 209], [417, 429]].forEach(([a, b]) => { const p = mix(U(a), U(b), 0.5); elipse(g, p[0], p[1], S * 0.015, S * 0.06, 'rgba(90,70,100,0.4)'); });
-  // olhos esfumados vermelho-escuros
-  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(110,10,45,0.85)', 1.55, 0); olheira(g, o, 'rgba(25,0,15,0.85)', 0.95, 0.05); });
-  sobrancelha(g, SOBR_A, SOBR_A_INF, 'rgba(15,8,15,0.95)', 5);
-  sobrancelha(g, SOBR_B, SOBR_B_INF, 'rgba(15,8,15,0.95)', 5);
-  veiasUV(g, 23, [[54, 1.4, 0.1], [284, 1.7, 0.1], [127, 0.5, 0.08], [356, 2.6, 0.08]], 'rgba(70,90,170,0.45)', 2.5);
-  labios(g, '#5e0616');
-  const brilhoLabio = mix(U(17), U(14), 0.5);
-  elipse(g, brilhoLabio[0], brilhoLabio[1], S * 0.035, S * 0.01, 'rgba(255,200,210,0.45)');
-}
-
-function pintarLobisomem(g) {
-  baseRosto(g, '#4e3726');
-  const r = mulberry32(31);
-  const nariz = U(1);
-  const cores = ['#2a1c12', '#3f2b1d', '#5f4430', '#7d5d40', '#9c7d5a', '#1d130c'];
-  g.save();
-  g.lineCap = 'round';
-  const dentro = new Path2D();
-  FACE_OVAL.forEach((i, k) => { const [x, y] = U(i); k ? dentro.lineTo(x, y) : dentro.moveTo(x, y); });
-  for (let i = 0; i < 11000; i++) {
-    const x = r() * S, y = r() * S;
-    if (!g.isPointInPath(dentro, x, y)) continue;
-    let ang = Math.atan2(y - nariz[1] + S * 0.05, x - nariz[0]) * 0.75 + Math.PI / 2 * 0.25;
-    ang += (r() - 0.5) * 0.5;
-    const comp = 10 + r() * 22;
-    const dMuz = dist([x, y], mix(U(1), U(0), 0.5)) / S;
-    g.strokeStyle = dMuz < 0.12 && r() < 0.7 ? cores[3 + Math.floor(r() * 2)] : cores[Math.floor(r() * cores.length)];
-    g.globalAlpha = 0.55 + r() * 0.45;
-    g.lineWidth = 1.2 + r() * 1.8;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.quadraticCurveTo(x + Math.cos(ang) * comp * 0.5 + (r() - 0.5) * 4, y + Math.sin(ang) * comp * 0.5, x + Math.cos(ang) * comp, y + Math.sin(ang) * comp);
-    g.stroke();
-  }
-  g.restore();
-  // focinho mais claro
-  const fc = mix(U(1), U(0), 0.6);
-  elipse(g, fc[0], fc[1], S * 0.14, S * 0.11, 'rgba(165,135,100,0.55)');
-  // olhos fundos
-  [OLHO_A, OLHO_B].forEach((o) => olheira(g, o, 'rgba(15,8,4,0.9)', 1.3, 0));
-  // sobrancelha única e grossa
-  sobrancelha(g, SOBR_A, SOBR_A_INF, 'rgba(20,12,6,0.95)', 10);
-  sobrancelha(g, SOBR_B, SOBR_B_INF, 'rgba(20,12,6,0.95)', 10);
-  elipse(g, ...U(9), S * 0.05, S * 0.02, 'rgba(20,12,6,0.9)');
-  // nariz de lobo, preto e úmido
-  const nw = dist(U(98), U(327));
-  const nc = mix(U(4), U(2), 0.4);
-  elipse(g, nc[0], nc[1], nw * 0.85, nw * 0.6, 'rgba(10,6,4,1)', 'rgba(10,6,4,0)');
-  elipse(g, nc[0], nc[1], nw * 0.65, nw * 0.45, 'rgba(8,5,3,1)', 'rgba(8,5,3,0.9)');
-  elipse(g, nc[0] - nw * 0.15, nc[1] - nw * 0.2, nw * 0.15, nw * 0.07, 'rgba(255,255,255,0.45)');
-  g.save();
-  g.strokeStyle = 'rgba(10,6,4,0.9)'; g.lineWidth = 6;
-  g.beginPath(); g.moveTo(...U(2)); g.lineTo(...U(0)); g.stroke();
-  g.restore();
-  labios(g, 'rgba(25,15,12,0.95)');
-}
-
-function pintarFantasma(g) {
-  baseRosto(g, 'rgba(225,238,255,0.9)');
-  manchas(g, 24, [170, 200, 240], 0.5, 41, 1.4, 14);
-  const c = centroUV(FACE_OVAL);
-  elipse(g, c[0], c[1], S * 0.55, S * 0.55, 'rgba(60,90,140,0)', 'rgba(60,90,140,0.6)');
-  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(0,10,35,0.9)', 1.7, 0.05); olheira(g, o, 'rgba(0,0,10,1)', 1.05, 0.05); });
-  [[50, 172, 0.5], [280, 397, -0.5]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.45); elipse(g, p[0], p[1], S * 0.1, S * 0.05, 'rgba(40,60,110,0.55)', null, ang); });
-  labios(g, 'rgba(30,45,80,0.9)');
-}
-
-function pintarCaveira(g) {
-  baseRosto(g, '#ebe5d4');
-  manchas(g, 36, [175, 160, 130], 0.4, 51, 1.6, 8);
-  manchas(g, 120, [120, 110, 90], 0.25, 52, 2.5, 1);
-  const c = centroUV(FACE_OVAL);
-  elipse(g, c[0], c[1], S * 0.56, S * 0.56, 'rgba(60,50,40,0)', 'rgba(60,50,40,0.55)');
-  const r = mulberry32(53);
-  // órbitas
-  [OLHO_A, OLHO_B].forEach((o) => {
-    const oc = centroUV(o), w = larguraOlhoUV(o);
-    const cx = oc[0], cy = oc[1] - w * 0.12, rx = w * 0.95, ry = w * 0.82;
-    const pts = Array.from({ length: 24 }, (_, k) => {
-      const ang = (k / 24) * Math.PI * 2;
-      const j = 0.9 + r() * 0.18;
-      return [cx + Math.cos(ang) * rx * j, cy + Math.sin(ang) * ry * j];
-    });
+  elipse(g, c[0], c[1], S * 0.56, S * 0.56, 'rgba(40,35,45,0)', 'rgba(40,35,45,0.6)');
+  // órbitas enormes e escuras
+  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(30,25,35,0.9)', 2.0, -0.05); olheira(g, o, 'rgba(5,0,8,1)', 1.25, 0); });
+  // bochechas encovadas e laterais do nariz
+  [[50, 172, 0.55], [280, 397, -0.55]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.4); elipse(g, p[0], p[1], S * 0.12, S * 0.045, 'rgba(50,40,55,0.65)', null, ang); });
+  [[193, 209], [417, 429]].forEach(([a, b]) => { const p = mix(U(a), U(b), 0.5); elipse(g, p[0], p[1], S * 0.015, S * 0.06, 'rgba(60,50,65,0.5)'); });
+  veiasUV(g, 113, [[54, 1.3, 0.1], [284, 1.8, 0.1], [127, 0.5, 0.08], [356, 2.6, 0.08]], 'rgba(90,70,110,0.45)', 2.5);
+  labios(g, 'rgba(25,15,25,1)');
+  // a boca escura rasga para os lados
+  [[61, 50], [291, 280]].forEach(([canto, bochecha]) => {
+    const q = mix(U(canto), U(bochecha), 0.35);
     g.save();
-    g.filter = 'blur(3px)';
-    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
-    gr.addColorStop(0, '#000');
-    gr.addColorStop(0.75, '#0b0806');
-    gr.addColorStop(1, '#2a221a');
-    g.fillStyle = gr;
-    g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(20,10,20,0.9)'; g.lineWidth = 10; g.lineCap = 'round'; g.filter = 'blur(2px)';
+    g.beginPath(); g.moveTo(...U(canto)); g.lineTo(...q); g.stroke();
     g.restore();
-    // enfeites de caveira mexicana
-    for (let k = 0; k < 12; k++) {
-      const ang = (k / 12) * Math.PI * 2;
-      g.fillStyle = k % 2 ? 'rgba(80,200,255,0.85)' : 'rgba(255,70,160,0.85)';
-      g.beginPath();
-      g.arc(cx + Math.cos(ang) * rx * 1.28, cy + Math.sin(ang) * ry * 1.28, 6, 0, Math.PI * 2);
-      g.fill();
-    }
   });
-  // nariz em forma de coração invertido
-  const n1 = U(98), n2 = U(327), ponta = U(195), base = mix(U(2), U(4), 0.3);
-  g.save();
-  g.fillStyle = '#0a0705';
-  g.filter = 'blur(1.5px)';
-  g.beginPath();
-  g.moveTo(...ponta);
-  g.quadraticCurveTo(n1[0] - 10, n1[1] - 30, n1[0], base[1]);
-  g.quadraticCurveTo(base[0], base[1] + 18, n2[0], base[1]);
-  g.quadraticCurveTo(n2[0] + 10, n2[1] - 30, ...ponta);
-  g.fill();
-  g.restore();
-  // maçãs do rosto fundas
-  [[50, 172, 0.55], [280, 397, -0.55]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.45); elipse(g, p[0], p[1], S * 0.12, S * 0.045, 'rgba(40,30,25,0.6)', null, ang); });
-  // boca costurada / dentes
-  labios(g, '#e3dccb');
-  const ca = U(61), cb = U(291);
-  const ext = [(cb[0] - ca[0]) * 0.28, (cb[1] - ca[1]) * 0.28];
-  const p1 = [ca[0] - ext[0], ca[1] - ext[1]], p2 = [cb[0] + ext[0], cb[1] + ext[1]];
-  const alt = dist(U(0), U(17)) * 0.75;
-  g.save();
-  g.strokeStyle = '#120c08';
-  g.lineCap = 'round';
-  g.lineWidth = 5;
-  g.beginPath(); g.moveTo(...p1); g.quadraticCurveTo(...mix(U(13), U(14), 0.5), ...p2); g.stroke();
-  g.lineWidth = 3.5;
-  for (let k = 0; k <= 12; k++) {
-    const [x, y] = mix(p1, p2, k / 12);
-    const h = alt * (1 - Math.pow(Math.abs(k / 12 - 0.5) * 2, 3) * 0.6);
-    g.beginPath(); g.moveTo(x, y - h * 0.55); g.lineTo(x, y + h * 0.55); g.stroke();
-  }
-  g.restore();
-  // rachaduras na testa
-  g.save();
-  g.strokeStyle = 'rgba(30,22,16,0.85)'; g.lineWidth = 2.5; g.lineJoin = 'round';
-  let [x, y] = mix(U(10), U(338), 0.5);
-  g.beginPath(); g.moveTo(x, y);
-  for (let k = 0; k < 7; k++) { x += (r() - 0.3) * 30; y += 18 + r() * 14; g.lineTo(x, y); }
-  g.stroke();
-  g.restore();
 }
 
 function pintarPalhaco(g) {
-  baseRosto(g, '#f5f2ea');
-  manchas(g, 40, [210, 200, 190], 0.3, 61, 1.6, 6);
+  baseRosto(g, '#efece4');
+  // maquiagem branca suja e rachada
+  manchas(g, 30, [150, 140, 125], 0.45, 61, 1.5, 9);
+  manchas(g, 90, [90, 80, 70], 0.3, 62, 2.2, 1.5);
   const c = centroUV(FACE_OVAL);
-  elipse(g, c[0], c[1], S * 0.57, S * 0.57, 'rgba(120,100,100,0)', 'rgba(120,100,100,0.35)');
-  // losangos vermelhos atravessando os olhos
+  elipse(g, c[0], c[1], S * 0.57, S * 0.57, 'rgba(60,40,40,0)', 'rgba(60,40,40,0.55)');
+  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(60,20,25,0.75)', 1.45, 0); olheira(g, o, 'rgba(15,0,5,0.85)', 0.95, 0.05); });
+  // linhas vermelhas cortando os olhos, da testa até a bochecha
   [OLHO_A, OLHO_B].forEach((o) => {
     const [cx, cy] = centroUV(o);
     const w = larguraOlhoUV(o);
     g.save();
-    g.fillStyle = '#c4102a';
-    g.strokeStyle = 'rgba(20,0,0,0.7)';
-    g.lineWidth = 3;
+    g.fillStyle = '#9e0a1c';
     g.filter = 'blur(1px)';
     g.beginPath();
-    g.moveTo(cx, cy - w * 1.45);
-    g.lineTo(cx + w * 0.32, cy);
-    g.lineTo(cx, cy + w * 1.15);
-    g.lineTo(cx - w * 0.32, cy);
+    g.moveTo(cx, cy - w * 1.9);
+    g.lineTo(cx + w * 0.12, cy);
+    g.lineTo(cx, cy + w * 1.5);
+    g.lineTo(cx - w * 0.12, cy);
     g.closePath();
-    g.fill(); g.stroke();
+    g.fill();
     g.restore();
   });
   // sobrancelhas pintadas, bem altas
@@ -415,22 +369,97 @@ function pintarPalhaco(g) {
     g.stroke();
     g.restore();
   });
-  // bochechas
-  elipse(g, ...U(50), S * 0.07, S * 0.05, 'rgba(230,60,80,0.45)');
-  elipse(g, ...U(280), S * 0.07, S * 0.05, 'rgba(230,60,80,0.45)');
-  // sorriso enorme
-  labios(g, '#c4102a');
+  // sorriso de sangue esticado até as maçãs do rosto, terminando em ponta
+  labios(g, '#8e0618');
   [[61, 50], [291, 280]].forEach(([canto, bochecha]) => {
-    const p = U(canto), q = mix(U(canto), U(bochecha), 0.75);
+    const p = U(canto), q = mix(U(canto), U(bochecha), 0.95), m = mix(p, q, 0.5);
     g.save();
-    g.strokeStyle = '#c4102a'; g.lineCap = 'round'; g.lineWidth = 22;
-    g.beginPath(); g.moveTo(...p); g.quadraticCurveTo(p[0] + (q[0] - p[0]) * 0.2, q[1] + 30, ...q); g.stroke();
+    g.fillStyle = '#8e0618';
+    g.filter = 'blur(1.5px)';
+    g.beginPath();
+    g.moveTo(p[0], p[1] - 14);
+    g.quadraticCurveTo(m[0], m[1] - 6, ...q);
+    g.quadraticCurveTo(m[0], m[1] + 34, p[0], p[1] + 14);
+    g.closePath();
+    g.fill();
     g.restore();
   });
-  // nariz vermelho
+  // sangue escorrendo da boca
+  const r = mulberry32(63);
+  g.save();
+  g.strokeStyle = g.fillStyle = 'rgba(110,5,20,0.9)';
+  g.lineCap = 'round';
+  for (let k = 0; k < 7; k++) {
+    const [x, y] = mix(U(61), U(291), 0.08 + k * 0.14);
+    const comp = S * (0.03 + r() * 0.07);
+    g.lineWidth = 5 + r() * 5;
+    g.beginPath(); g.moveTo(x, y + 8); g.lineTo(x + (r() - 0.5) * 6, y + comp); g.stroke();
+    g.beginPath(); g.arc(x, y + comp, g.lineWidth * 0.8, 0, Math.PI * 2); g.fill();
+  }
+  g.restore();
+  // nariz vermelho-escuro
   const nw = dist(U(98), U(327));
-  elipse(g, ...U(4), nw * 0.75, nw * 0.7, 'rgba(210,20,35,1)', 'rgba(190,10,25,0.95)');
-  elipse(g, U(4)[0] - nw * 0.2, U(4)[1] - nw * 0.25, nw * 0.18, nw * 0.12, 'rgba(255,255,255,0.7)');
+  elipse(g, ...U(4), nw * 0.6, nw * 0.55, 'rgba(150,10,25,1)', 'rgba(120,5,20,0.95)');
+  elipse(g, U(4)[0] - nw * 0.15, U(4)[1] - nw * 0.2, nw * 0.12, nw * 0.08, 'rgba(255,255,255,0.5)');
+}
+
+function pintarNosferatu(g) {
+  baseRosto(g, '#c4c6b4');
+  manchas(g, 22, [120, 125, 105], 0.5, 121, 1.4, 12);
+  manchas(g, 90, [80, 85, 70], 0.3, 122, 2.2, 1.5);
+  const c = centroUV(FACE_OVAL);
+  elipse(g, c[0], c[1], S * 0.55, S * 0.55, 'rgba(30,35,30,0)', 'rgba(30,35,30,0.75)');
+  // sem sobrancelhas, órbitas fundas e arroxeadas
+  [OLHO_A, OLHO_B].forEach((o) => { olheira(g, o, 'rgba(70,30,50,0.85)', 1.8, 0.05); olheira(g, o, 'rgba(15,0,8,1)', 1.15, 0.05); });
+  // bochechas encovadas e sombra ao longo do nariz comprido
+  [[50, 172, 0.55], [280, 397, -0.55]].forEach(([a, b, ang]) => { const p = mix(U(a), U(b), 0.45); elipse(g, p[0], p[1], S * 0.12, S * 0.05, 'rgba(40,40,35,0.7)', null, ang); });
+  [[193, 209], [417, 429]].forEach(([a, b]) => { const p = mix(U(a), U(b), 0.5); elipse(g, p[0], p[1], S * 0.015, S * 0.06, 'rgba(50,50,45,0.5)'); });
+  veiasUV(g, 123, [[10, 1.6, 0.16], [54, 1.0, 0.14], [284, 2.1, 0.14], [127, 0.4, 0.12], [356, 2.7, 0.12]], 'rgba(50,60,110,0.75)', 4);
+  labios(g, 'rgba(45,25,35,1)');
+}
+
+function pintarCadaver(g) {
+  // lado A: carne podre
+  baseRosto(g, '#868b74');
+  manchas(g, 16, [90, 40, 70], 0.7, 131, 1.3, 16);
+  manchas(g, 40, [140, 125, 60], 0.5, 132, 1.8, 6);
+  manchas(g, 140, [35, 35, 25], 0.45, 133, 2.2, 1);
+  const c = centroUV(FACE_OVAL);
+  elipse(g, c[0], c[1], S * 0.55, S * 0.55, 'rgba(35,25,30,0)', 'rgba(35,25,30,0.8)');
+  olheira(g, OLHO_A, 'rgba(40,5,30,1)', 1.5);
+  olheira(g, OLHO_A, 'rgba(10,0,5,0.9)', 0.95, 0.05);
+  veiasUV(g, 134, [[54, 1.2, 0.2], [127, 0.4, 0.17], [172, -0.6, 0.14]], 'rgba(45,10,60,0.9)', 6);
+  const pf = mix(U(50), U(234), 0.35);
+  ferida(g, pf[0], pf[1] + S * 0.04, S * 0.08, 135);
+  labios(g, 'rgba(40,20,35,1)');
+  // lado B: a pele foi arrancada até o osso, com um rasgo irregular no meio do rosto
+  const r = mulberry32(136);
+  const corte = Array.from({ length: 26 }, (_, k) => [S * (0.5 + (r() - 0.5) * 0.07), S * (k / 25)]);
+  const metade = () => { g.beginPath(); g.moveTo(S, 0); corte.forEach(([x, y]) => g.lineTo(x, y)); g.lineTo(S, S); g.closePath(); };
+  g.save();
+  g.filter = 'blur(5px)';
+  g.fillStyle = 'rgba(120,10,20,0.95)';
+  g.translate(-S * 0.03, 0);
+  metade(); g.fill();
+  g.restore();
+  g.save();
+  metade(); g.clip();
+  g.fillStyle = '#e2dac7';
+  g.fillRect(0, 0, S, S);
+  manchas(g, 36, [170, 150, 120], 0.45, 137, 1.6, 8);
+  manchas(g, 120, [110, 95, 80], 0.3, 138, 2.5, 1);
+  elipse(g, c[0], c[1], S * 0.56, S * 0.56, 'rgba(60,45,35,0)', 'rgba(60,45,35,0.6)');
+  orbitaUV(g, OLHO_B, r);
+  narizCaveiraUV(g);
+  const p = mix(U(280), U(397), 0.45);
+  elipse(g, p[0], p[1], S * 0.12, S * 0.045, 'rgba(40,30,25,0.6)', null, -0.55);
+  dentesCaveiraUV(g);
+  g.strokeStyle = 'rgba(30,22,16,0.85)'; g.lineWidth = 2.5; g.lineJoin = 'round';
+  let [x, y] = mix(U(10), U(338), 0.5);
+  g.beginPath(); g.moveTo(x, y);
+  for (let k = 0; k < 7; k++) { x += (r() - 0.3) * 30; y += 18 + r() * 14; g.lineTo(x, y); }
+  g.stroke();
+  g.restore();
 }
 
 // ===================== geometria do rosto na tela =====================
@@ -553,17 +582,21 @@ function olhoVazio(ctx, R, o, a, brilho = null) {
   }
 }
 
-// ------------------------- presas e sangue -------------------------
-function presa(ctx, R, base, comp, larg, sentido = 1) {
+// ------------------------- dentes e sangue -------------------------
+const DENTE_BRANCO = ['#d9d2bd', '#fbf8ee', '#ffffff'];
+const DENTE_PODRE = ['#5c4a2a', '#b8a670', '#e6dcb4'];
+const DENTE_RATO = ['#8a7a4a', '#d8cfa0', '#f2ecd0'];
+
+function presa(ctx, R, base, comp, larg, sentido = 1, cores = DENTE_BRANCO) {
   const [x, y] = base;
   const d = [R.dir[0] * sentido, R.dir[1] * sentido];
   const n = [-d[1], d[0]];
   const ponta = [x + d[0] * comp, y + d[1] * comp];
   ctx.save();
   const g = ctx.createLinearGradient(x, y, ponta[0], ponta[1]);
-  g.addColorStop(0, '#d9d2bd');
-  g.addColorStop(0.6, '#fbf8ee');
-  g.addColorStop(1, '#ffffff');
+  g.addColorStop(0, cores[0]);
+  g.addColorStop(0.6, cores[1]);
+  g.addColorStop(1, cores[2]);
   ctx.fillStyle = g;
   ctx.strokeStyle = 'rgba(60,40,30,0.7)';
   ctx.lineWidth = Math.max(1, larg * 0.08);
@@ -575,6 +608,20 @@ function presa(ctx, R, base, comp, larg, sentido = 1) {
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+// boca aberta: fileiras de dentes afiados; boca fechada: só as duas presas
+const DENTES_CIMA = [80, 81, 82, 13, 312, 311, 310];
+const DENTES_BAIXO = [88, 178, 87, 14, 317, 402, 318];
+
+function dentes(ctx, R, k, cores = DENTE_BRANCO, comp = 0.05, larg = 0.028) {
+  if (k <= 0) return;
+  if (R.boca > 0.03) {
+    DENTES_CIMA.forEach((i) => presa(ctx, R, R.P(i), R.fh * comp * k, R.fw * larg, 1, cores));
+    DENTES_BAIXO.forEach((i) => presa(ctx, R, R.P(i), R.fh * comp * 0.8 * k, R.fw * larg, -1, cores));
+  } else {
+    [81, 311].forEach((i) => presa(ctx, R, R.P(i), R.fh * comp * 1.4 * k, R.fw * larg * 1.2, 1, cores));
+  }
 }
 
 function gota(ctx, R, ponto, comp, larg, k, t, i) {
@@ -596,96 +643,74 @@ function gota(ctx, R, ponto, comp, larg, k, t, i) {
   ctx.restore();
 }
 
-// ------------------------- pelos, orelhas, cabelo -------------------------
-const rndPelo = mulberry32(77);
-const PELOS = Array.from({ length: 520 }, () => ({ s: rndPelo(), c: rndPelo(), ang: rndPelo() - 0.5, cor: Math.floor(rndPelo() * 5), curva: rndPelo() - 0.5 }));
-const CORES_PELO = ['#2a1c12', '#3f2b1d', '#5f4430', '#7d5d40', '#1a110a'];
-
-function contornoTela(R) {
-  const pts = FACE_OVAL.map(R.P);
-  return (s) => {
-    const f = s * pts.length;
-    const i = Math.floor(f) % pts.length;
-    return mix(pts[i], pts[(i + 1) % pts.length], f - Math.floor(f));
-  };
-}
-
-function pelagem(ctx, R, a) {
-  if (a <= 0.15) return;
-  const k = fase(a, 0.15, 0.55);
-  const ponto = contornoTela(R);
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.globalAlpha = k;
-  PELOS.forEach((p) => {
-    const [x, y] = ponto(p.s);
-    let n = [x - R.C[0], y - R.C[1]];
-    const nl = Math.hypot(...n);
-    n = [n[0] / nl, n[1] / nl];
-    const ang = Math.atan2(n[1], n[0]) + p.ang * 0.7;
-    const comp = R.fh * (0.07 + p.c * 0.13) * (0.4 + 0.6 * k);
-    const ini = [x - n[0] * R.fh * 0.03, y - n[1] * R.fh * 0.03];
-    const fim = [ini[0] + Math.cos(ang) * comp, ini[1] + Math.sin(ang) * comp];
-    ctx.strokeStyle = CORES_PELO[p.cor];
-    ctx.lineWidth = Math.max(1.5, R.fw * (0.008 + p.c * 0.008));
-    ctx.beginPath();
-    ctx.moveTo(...ini);
-    ctx.quadraticCurveTo(ini[0] + Math.cos(ang + p.curva) * comp * 0.6, ini[1] + Math.sin(ang + p.curva) * comp * 0.6, ...fim);
-    ctx.stroke();
-  });
-  ctx.restore();
-}
-
-// pelos curtos atravessando a borda do rosto (desenhados por cima, escondem a "borda de máscara")
-const PELOS_BORDA = Array.from({ length: 300 }, () => ({ s: rndPelo(), c: rndPelo(), ang: rndPelo() - 0.5, cor: Math.floor(rndPelo() * 5) }));
-
-function pelagemBorda(ctx, R, a) {
-  if (a <= 0.3) return;
-  const k = fase(a, 0.3, 0.4);
-  const ponto = contornoTela(R);
-  ctx.save();
-  ctx.lineCap = 'round';
-  PELOS_BORDA.forEach((p) => {
-    const [x, y] = ponto(p.s);
-    let n = [x - R.C[0], y - R.C[1]];
-    const nl = Math.hypot(...n);
-    n = [n[0] / nl, n[1] / nl];
-    const ang = Math.atan2(n[1], n[0]) + p.ang * 0.8;
-    const comp = R.fh * (0.05 + p.c * 0.05) * k;
-    const ini = [x - n[0] * R.fh * 0.045, y - n[1] * R.fh * 0.045];
-    ctx.strokeStyle = CORES_PELO[p.cor];
-    ctx.globalAlpha = 0.85 * k;
-    ctx.lineWidth = Math.max(1.2, R.fw * 0.006);
-    ctx.beginPath();
-    ctx.moveTo(...ini);
-    ctx.lineTo(ini[0] + Math.cos(ang) * comp, ini[1] + Math.sin(ang) * comp);
-    ctx.stroke();
-  });
-  ctx.restore();
-}
-
-function orelhas(ctx, R, a) {
-  if (a <= 0.2) return;
-  const k = fase(a, 0.2, 0.5);
+// ------------------------- chifres, véu, cabelos -------------------------
+// chifres de demônio saindo da testa
+function chifres(ctx, R, a) {
+  if (a <= 0.25) return;
+  const k = fase(a, 0.25, 0.5);
+  const curva = (p0, c, p1, s) => [0, 1].map((e) => (1 - s) ** 2 * p0[e] + 2 * (1 - s) * s * c[e] + s * s * p1[e]);
   [-1, 1].forEach((lado) => {
-    const base1 = R.local(lado * 0.2, -0.48), base2 = R.local(lado * 0.48, -0.32);
-    const ponta = R.local(lado * (0.42 + 0.1 * k), -0.48 - 0.42 * k);
+    const pt = (du, dv) => R.local(lado * (0.2 + du * k), -0.38 + dv * k);
+    const b1 = pt(-0.09, 0.03), b2 = pt(0.09, 0.03);
+    const cExt = pt(0.34, -0.22), ponta = pt(0.12, -0.62), cInt = pt(0.06, -0.24);
     ctx.save();
-    const g = ctx.createLinearGradient(...mix(base1, base2, 0.5), ...ponta);
-    g.addColorStop(0, '#3a281a'); g.addColorStop(1, '#1a110a');
+    const g = ctx.createLinearGradient(...mix(b1, b2, 0.5), ...ponta);
+    g.addColorStop(0, '#7a2a18');
+    g.addColorStop(0.55, '#3a140c');
+    g.addColorStop(1, '#0a0303');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(...base1); ctx.quadraticCurveTo(...mix(base1, ponta, 0.5), ...ponta); ctx.lineTo(...base2); ctx.closePath(); ctx.fill();
-    const i1 = mix(base1, base2, 0.2), i2 = mix(base1, base2, 0.8), ip = mix(ponta, mix(base1, base2, 0.5), 0.3);
-    ctx.fillStyle = 'rgba(70,35,30,0.9)';
-    ctx.beginPath(); ctx.moveTo(...i1); ctx.lineTo(...ip); ctx.lineTo(...i2); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#5f4430'; ctx.lineWidth = Math.max(1, R.fw * 0.006); ctx.lineCap = 'round';
-    for (let j = 0; j < 14; j++) {
-      const s = j / 14;
-      const p = mix(base1, ponta, s), q = mix(base2, ponta, s);
-      [p, q].forEach((pt) => { ctx.beginPath(); ctx.moveTo(...pt); ctx.lineTo(pt[0] + (ponta[0] - pt[0]) * 0.1 + lado * R.fw * 0.02, pt[1] - R.fh * 0.015); ctx.stroke(); });
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = Math.max(1, R.fw * 0.005);
+    ctx.beginPath();
+    ctx.moveTo(...b2);
+    ctx.quadraticCurveTo(...cExt, ...ponta);
+    ctx.quadraticCurveTo(...cInt, ...b1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // anéis do chifre
+    ctx.strokeStyle = 'rgba(10,5,3,0.55)';
+    for (let j = 1; j < 8; j++) {
+      ctx.beginPath();
+      ctx.moveTo(...curva(b2, cExt, ponta, j / 8));
+      ctx.lineTo(...curva(b1, cInt, ponta, j / 8));
+      ctx.stroke();
     }
     ctx.restore();
   });
+}
+
+// véu preto e touca branca da freira (desenhados só fora do rosto)
+function veuFreira(ctx, R, a) {
+  if (a <= 0.1) return;
+  const k = fase(a, 0.1, 0.5);
+  const contorno = (e) => {
+    FACE_OVAL.map(R.P).forEach(([x, y], i) => {
+      const px = R.C[0] + (x - R.C[0]) * e, py = R.C[1] + (y - R.C[1]) * e;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    });
+    ctx.closePath();
+  };
+  const pts = [[0, -0.8], [0.6, -0.62], [0.88, -0.05], [1.0, 0.7], [1.3, 1.7], [-1.3, 1.7], [-1.0, 0.7], [-0.88, -0.05], [-0.6, -0.62]]
+    .map(([u, v]) => R.local(u, v));
+  ctx.save();
+  ctx.globalAlpha = k;
+  ctx.beginPath();
+  ctx.moveTo(...mix(pts[pts.length - 1], pts[0], 0.5));
+  pts.forEach((p, i) => ctx.quadraticCurveTo(...p, ...mix(p, pts[(i + 1) % pts.length], 0.5)));
+  ctx.closePath();
+  contorno(0.98);
+  const gv = ctx.createLinearGradient(...R.local(0, -0.8), ...R.local(0, 1.2));
+  gv.addColorStop(0, '#1a181e');
+  gv.addColorStop(1, '#050407');
+  ctx.fillStyle = gv;
+  ctx.fill('evenodd');
+  ctx.beginPath();
+  contorno(1.2);
+  contorno(0.98);
+  ctx.fillStyle = '#dcd8ce';
+  ctx.fill('evenodd');
+  ctx.restore();
 }
 
 // cabelo crespo do palhaço: muitos cachinhos (espirais) formando dois tufos ao lado da cabeça
@@ -694,7 +719,7 @@ const CACHOS = Array.from({ length: 260 }, () => {
   const ang = rndCab() * Math.PI * 2, raio = Math.sqrt(rndCab());
   return { u: 0.66 + Math.cos(ang) * raio * 0.17, v: -0.2 + Math.sin(ang) * raio * 0.26, r: 0.018 + rndCab() * 0.022, tom: rndCab(), giro: rndCab() * 6 };
 }).sort((p, q) => p.r - q.r);
-const TONS_CABELO = ['#ff5a1f', '#ff3d12', '#e8320c', '#ff7a2e', '#c4260a'];
+const TONS_CABELO = ['#d9400f', '#b8300a', '#9e2808', '#e85a1a', '#7a1e05'];
 
 function cabeloPalhaco(ctx, R, a) {
   if (a <= 0.15) return;
@@ -705,8 +730,8 @@ function cabeloPalhaco(ctx, R, a) {
     // sombra/volume do tufo
     const centro = R.local(lado * (0.5 + 0.16 * k), -0.2);
     const gs = ctx.createRadialGradient(...centro, 0, ...centro, R.fw * 0.24 * k);
-    gs.addColorStop(0, 'rgba(120,20,5,0.95)');
-    gs.addColorStop(1, 'rgba(120,20,5,0)');
+    gs.addColorStop(0, 'rgba(90,15,5,0.95)');
+    gs.addColorStop(1, 'rgba(90,15,5,0)');
     ctx.fillStyle = gs;
     ctx.beginPath(); ctx.arc(...centro, R.fw * 0.24 * k, 0, Math.PI * 2); ctx.fill();
     CACHOS.forEach((c) => {
@@ -724,6 +749,42 @@ function cabeloPalhaco(ctx, R, a) {
     });
   });
   ctx.restore();
+}
+
+// orelhas pontudas de morcego do nosferatu, crescendo das laterais da cabeça
+function orelhasNosferatu(ctx, R, a) {
+  if (a <= 0.2) return;
+  const k = fase(a, 0.2, 0.5);
+  [-1, 1].forEach((lado) => {
+    const pt = (u, v) => R.local(lado * u, v);
+    const b1 = pt(0.46, -0.14), b2 = pt(0.46, 0.22);
+    const ponta = mix(pt(0.55, -0.1), pt(0.78, -0.5), k);
+    const cSup = mix(pt(0.5, -0.14), pt(0.58, -0.28), k), cInf = mix(pt(0.55, 0.1), pt(0.76, 0.02), k);
+    const forma = (enc) => {
+      const c = mix(b1, b2, 0.5), f = (p) => mix(p, c, enc);
+      ctx.beginPath();
+      ctx.moveTo(...f(b1));
+      ctx.quadraticCurveTo(...f(cSup), ...mix(ponta, c, enc * 0.6));
+      ctx.quadraticCurveTo(...f(cInf), ...f(b2));
+      ctx.closePath();
+    };
+    ctx.save();
+    const g = ctx.createLinearGradient(...mix(b1, b2, 0.5), ...ponta);
+    g.addColorStop(0, '#8e9080');
+    g.addColorStop(1, '#cfd0c0');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = 'rgba(30,30,25,0.6)';
+    ctx.lineWidth = Math.max(1, R.fw * 0.004);
+    forma(0);
+    ctx.fill();
+    ctx.stroke();
+    // parte de dentro da orelha
+    ctx.filter = `blur(${Math.max(1, R.fw * 0.008)}px)`;
+    ctx.fillStyle = 'rgba(95,55,65,0.75)';
+    forma(0.35);
+    ctx.fill();
+    ctx.restore();
+  });
 }
 
 // ===================== deformação do formato do rosto =====================
@@ -746,39 +807,26 @@ function ampliarOlhos(u, v, fator, alongarY = 1, desce = 0) {
 }
 
 const DEFORMACOES = {
-  lobisomem(u, v) {
+  possuido(u, v) {
     const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
     let du = 0, dv = 0;
-    // focinho: nariz e boca descem e alargam
-    dv += 0.07 * gs(u, v, 0.5, 0.66, 0.2, 0.16);
-    du += l * 0.45 * gs(u, v, 0.5, 0.58, 0.12, 0.06);
-    du += l * 0.35 * gs(u, v, 0.5, 0.7, 0.16, 0.06);
-    // mandíbula mais comprida e larga
-    const baixo = suave(0.6, 0.95, v);
-    dv += 0.1 * baixo;
-    du += l * 0.28 * baixo;
-    // testa mais baixa, sobrancelha pesada e mais junta
-    dv += 0.05 * suave(0.35, 0.1, v);
-    dv += 0.03 * gs(u, v, 0.5, 0.27, 0.3, 0.05);
-    du -= l * 0.15 * gs(u, v, 0.5, 0.27, 0.25, 0.05);
-    // olhos puxados (canto externo sobe) e maçãs largas
-    dv -= 0.035 * gs(al, v, 0.22, 0.375, 0.06, 0.04);
-    du += sl * 0.05 * gs(al, v, 0.35, 0.6, 0.15, 0.15);
-    return [du, dv];
-  },
-  vampiro(u, v) {
-    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
-    let du = 0, dv = 0;
-    // queixo fino e pontudo
-    const queixo = suave(0.72, 0.96, v);
-    du -= l * 0.4 * queixo;
-    dv += 0.05 * queixo * gs(u, v, 0.5, 0.95, 0.12, 0.2);
-    // bochechas encovadas e maçãs altas
-    du -= sl * 0.04 * gs(al, v, 0.3, 0.67, 0.12, 0.1);
-    du += sl * 0.025 * gs(al, v, 0.3, 0.5, 0.1, 0.06);
-    // sobrancelhas arqueadas e olhos puxados
-    dv -= 0.04 * gs(al, v, 0.22, 0.28, 0.08, 0.05);
-    dv -= 0.018 * gs(al, v, 0.22, 0.375, 0.05, 0.04);
+    // sobrancelhas baixas e juntas, cantos externos para cima (cara de fúria)
+    dv += 0.035 * gs(al, v, 0.12, 0.28, 0.1, 0.05);
+    du -= sl * 0.03 * gs(al, v, 0.15, 0.28, 0.1, 0.05);
+    dv -= 0.025 * gs(al, v, 0.3, 0.3, 0.07, 0.05);
+    // bochechas fundas e maçãs salientes
+    du -= sl * 0.05 * gs(al, v, 0.3, 0.66, 0.12, 0.1);
+    du += sl * 0.03 * gs(al, v, 0.33, 0.5, 0.1, 0.06);
+    // sorriso maligno: cantos da boca para fora e para cima
+    [[0.382, -1], [0.618, 1]].forEach(([cu, lado]) => {
+      const w = gs(u, v, cu, 0.695, 0.07, 0.05);
+      du += lado * 0.05 * w;
+      dv -= 0.03 * w;
+    });
+    // queixo comprido
+    const queixo = suave(0.75, 0.97, v);
+    dv += 0.05 * queixo;
+    du -= l * 0.2 * queixo;
     return [du, dv];
   },
   zumbi(u, v) {
@@ -796,26 +844,12 @@ const DEFORMACOES = {
     du -= sl * 0.02 * gs(al, v, 0.45, 0.35, 0.08, 0.12);
     return [du, dv];
   },
-  caveira(u, v) {
-    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
-    let [du, dv] = ampliarOlhos(u, v, 0.55);
-    // bochechas bem fundas, rosto estreito embaixo, nariz menor
-    du -= sl * 0.06 * gs(al, v, 0.3, 0.64, 0.14, 0.12);
-    const baixo = suave(0.6, 0.95, v);
-    du -= l * 0.25 * baixo;
-    dv += 0.03 * baixo;
-    du -= l * 0.4 * gs(u, v, 0.5, 0.58, 0.1, 0.05);
-    return [du, dv];
-  },
-  fantasma(u, v) {
-    const l = u - 0.5;
-    let [du, dv] = ampliarOlhos(u, v, 0.35, 2.2, 0.025);
-    // rosto derretendo: tudo abaixo dos olhos estica para baixo e afina
-    const s = suave(0.42, 0.95, v);
-    dv += 0.14 * s;
-    du -= l * 0.15 * s;
-    // boca aberta num grito: lábio inferior e queixo descem mais
-    dv += 0.07 * suave(0.69, 0.72, v) * gs(u, v, 0.5, 0.8, 0.14, 0.12);
+  freira(u, v) {
+    const sl = Math.sign(u - 0.5), al = Math.abs(u - 0.5);
+    let [du, dv] = ampliarOlhos(u, v, 0.45, 1.3);
+    // bochechas encovadas e cantos da boca caídos
+    du -= sl * 0.045 * gs(al, v, 0.3, 0.66, 0.12, 0.1);
+    dv += 0.03 * gs(al, v, 0.12, 0.7, 0.06, 0.05);
     return [du, dv];
   },
   palhaco(u, v) {
@@ -832,6 +866,41 @@ const DEFORMACOES = {
     dv -= 0.06 * suave(0.3, 0.1, v);
     du += l * 0.12 * suave(0.35, 0.1, v);
     return [du, dv];
+  },
+  nosferatu(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let [du, dv] = ampliarOlhos(u, v, 0.25, 1.2);
+    // cabeça pontuda: a testa sobe e afina
+    const testa = suave(0.32, 0.1, v);
+    dv -= 0.07 * testa;
+    du -= l * 0.25 * testa;
+    // bochechas bem encovadas
+    du -= sl * 0.06 * gs(al, v, 0.3, 0.64, 0.13, 0.11);
+    // nariz comprido e afilado
+    dv += 0.035 * gs(u, v, 0.5, 0.56, 0.05, 0.06);
+    du -= l * 0.35 * gs(u, v, 0.5, 0.55, 0.08, 0.06);
+    // queixo estreito
+    const baixo = suave(0.7, 0.97, v);
+    du -= l * 0.2 * baixo;
+    dv += 0.03 * baixo;
+    return [du, dv];
+  },
+  caveira(u, v) {
+    const l = u - 0.5, sl = Math.sign(l), al = Math.abs(l);
+    let [du, dv] = ampliarOlhos(u, v, 0.55);
+    // bochechas bem fundas, rosto estreito embaixo, nariz menor
+    du -= sl * 0.06 * gs(al, v, 0.3, 0.64, 0.14, 0.12);
+    const baixo = suave(0.6, 0.95, v);
+    du -= l * 0.25 * baixo;
+    dv += 0.03 * baixo;
+    du -= l * 0.4 * gs(u, v, 0.5, 0.58, 0.1, 0.05);
+    return [du, dv];
+  },
+  // metade zumbi (lado A), metade caveira (lado B)
+  cadaver(u, v) {
+    const w = suave(0.44, 0.56, u);
+    const z = DEFORMACOES.zumbi(u, v), c = DEFORMACOES.caveira(u, v);
+    return [z[0] * (1 - w) + c[0] * w, z[1] * (1 - w) + c[1] * w];
   },
 };
 
@@ -851,121 +920,88 @@ export function deformarRosto(lm, monstro, k, W, H) {
   return saida;
 }
 
-// orelhas pontudas de vampiro (cor de pele pálida)
-function orelhasVampiro(ctx, R, a) {
-  if (a <= 0.3) return;
-  const k = fase(a, 0.3, 0.5);
-  [-1, 1].forEach((lado) => {
-    const b1 = R.local(lado * 0.45, -0.08), b2 = R.local(lado * 0.44, 0.18);
-    const ponta = R.local(lado * (0.5 + 0.2 * k), -0.08 - 0.3 * k);
-    const meio = R.local(lado * (0.55 + 0.05 * k), 0.08);
-    ctx.save();
-    const g = ctx.createLinearGradient(...b1, ...ponta);
-    g.addColorStop(0, 'rgba(200,200,215,0.95)');
-    g.addColorStop(1, 'rgba(230,228,240,0.95)');
-    ctx.fillStyle = g;
-    ctx.strokeStyle = 'rgba(70,50,70,0.6)';
-    ctx.lineWidth = Math.max(1, R.fw * 0.006);
-    ctx.beginPath();
-    ctx.moveTo(...b1);
-    ctx.quadraticCurveTo(...mix(b1, ponta, 0.5).map((c, i) => c + (i ? 0 : lado * R.fw * 0.02)), ...ponta);
-    ctx.quadraticCurveTo(...meio, ...b2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // dobra interna
-    ctx.strokeStyle = 'rgba(120,80,100,0.5)';
-    ctx.beginPath();
-    ctx.moveTo(...mix(b1, b2, 0.5));
-    ctx.quadraticCurveTo(...mix(meio, ponta, 0.4), ...mix(ponta, b1, 0.25));
-    ctx.stroke();
-    ctx.restore();
-  });
-}
-
 // ============================ os monstros ============================
 const GOTAS_ZUMBI = [
   { ponto: 61, inicio: 0.3, comp: 0.26, larg: 0.018 },
   { ponto: 291, inicio: 0.45, comp: 0.18, larg: 0.014 },
   { ponto: 17, inicio: 0.6, comp: 0.34, larg: 0.022 },
+  { ponto: 374, inicio: 0.65, comp: 0.2, larg: 0.009 },
   { ponto: 145, inicio: 0.78, comp: 0.22, larg: 0.009 },
 ];
 
 export const MONSTROS = [
   {
+    id: 'possuido', nome: 'POSSUÍDO', emoji: '😈', cor: '#ff3b1f', brilho: [1.0, 0.3, 0.0],
+    frase: 'ELE ESTÁ DENTRO DE VOCÊ', som: 'demonio',
+    filtro: (a) => `saturate(${1 - 0.5 * a}) contrast(${1 + 0.3 * a}) brightness(${1 - 0.25 * a}) sepia(${0.35 * a}) hue-rotate(${-25 * a}deg)`,
+    pintar: pintarPossuido,
+    antes(ctx, R, a) { chifres(ctx, R, a); },
+    depois(ctx, R, a, t) {
+      R.olhos.forEach((o) => olhoVazio(ctx, R, o, fase(a, 0.3, 0.4), 'rgba(255,40,0,A)'));
+      dentes(ctx, R, fase(a, 0.5, 0.35), DENTE_PODRE);
+      [145, 374].forEach((p, i) => gota(ctx, R, p, 0.28, 0.012, fase(a, 0.55 + i * 0.1, 0.4), t, i));
+      gota(ctx, R, 17, 0.3, 0.02, fase(a, 0.7, 0.3), t, 3);
+    },
+  },
+  {
     id: 'zumbi', nome: 'ZUMBI', emoji: '🧟', cor: '#8dff5a', brilho: [0.35, 1.0, 0.2],
     frase: 'VOCÊ FOI INFECTADO', som: 'rosnado',
-    filtro: (a) => `saturate(${1 - 0.55 * a}) contrast(${1 + 0.15 * a}) brightness(${1 - 0.12 * a})`,
+    filtro: (a) => `saturate(${1 - 0.55 * a}) contrast(${1 + 0.2 * a}) brightness(${1 - 0.15 * a})`,
     pintar: pintarZumbi,
     depois(ctx, R, a, t) {
       R.olhos.forEach((o) => olhoLeitoso(ctx, R, o, fase(a, 0.3, 0.4)));
+      if (R.boca > 0.03) dentes(ctx, R, fase(a, 0.55, 0.35), DENTE_PODRE, 0.04, 0.03);
       GOTAS_ZUMBI.forEach((g, i) => gota(ctx, R, g.ponto, g.comp, g.larg, fase(a, g.inicio, 1 - g.inicio), t, i));
     },
   },
   {
-    id: 'vampiro', nome: 'VAMPIRO', emoji: '🧛', cor: '#ff2340', brilho: [1.0, 0.05, 0.15],
-    frase: 'VOCÊ FOI MORDIDO', som: 'sibilo',
-    filtro: (a) => `saturate(${1 - 0.6 * a}) contrast(${1 + 0.2 * a}) brightness(${1 - 0.1 * a}) sepia(${0.15 * a}) hue-rotate(${-15 * a}deg)`,
-    pintar: pintarVampiro,
-    antes(ctx, R, a) { orelhasVampiro(ctx, R, a); },
+    id: 'freira', nome: 'A FREIRA', emoji: '🕯️', cor: '#ffd23b', brilho: [1.0, 0.85, 0.2],
+    frase: 'REZE... SE PUDER', som: 'grito',
+    filtro: (a) => `saturate(${1 - 0.8 * a}) contrast(${1 + 0.3 * a}) brightness(${1 - 0.2 * a})`,
+    pintar: pintarFreira,
+    antes(ctx, R, a) { veuFreira(ctx, R, a); },
     depois(ctx, R, a, t) {
-      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.45, 0.4), 'rgba(255,20,40,A)', 'ponto', t));
-      const k = fase(a, 0.55, 0.35);
-      if (k > 0) [81, 311].forEach((i) => presa(ctx, R, R.P(i), R.fh * 0.075 * k, R.fw * 0.035));
-      gota(ctx, R, 291, 0.2, 0.012, fase(a, 0.7, 0.3), t, 1);
+      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.4, 0.4), 'rgba(255,210,40,A)', 'ponto', t));
+      dentes(ctx, R, fase(a, 0.5, 0.35), DENTE_BRANCO, 0.06, 0.03);
     },
   },
   {
-    id: 'lobisomem', nome: 'LOBISOMEM', emoji: '🐺', cor: '#ffb02e', brilho: [1.0, 0.6, 0.1],
-    frase: 'A LUA CHEIA TE PEGOU', som: 'uivo',
-    filtro: (a) => `saturate(${1 - 0.2 * a}) contrast(${1 + 0.2 * a}) brightness(${1 - 0.15 * a}) sepia(${0.25 * a})`,
-    pintar: pintarLobisomem,
-    antes(ctx, R, a) { orelhas(ctx, R, a); pelagem(ctx, R, a); },
-    depois(ctx, R, a, t) {
-      pelagemBorda(ctx, R, a);
-      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.35, 0.4), 'rgba(255,180,20,A)', 'fenda', t));
-      const k = fase(a, 0.5, 0.35);
-      if (k > 0) {
-        [81, 311].forEach((i) => presa(ctx, R, R.P(i), R.fh * 0.09 * k, R.fw * 0.04));
-        if (R.boca > 0.03) [178, 402].forEach((i) => presa(ctx, R, R.P(i), R.fh * 0.06 * k, R.fw * 0.035, -1));
-      }
-    },
-  },
-  {
-    id: 'fantasma', nome: 'FANTASMA', emoji: '👻', cor: '#8fe9ff', brilho: [0.5, 0.9, 1.0],
-    frase: 'VOCÊ ESTÁ MORTO', som: 'lamento', fantasma: true,
-    filtro: (a) => `saturate(${1 - 0.85 * a}) brightness(${1 + 0.15 * a}) contrast(${1 + 0.1 * a})`,
-    pintar: pintarFantasma,
-    depois(ctx, R, a) {
-      const k = fase(a, 0.3, 0.4);
-      R.olhos.forEach((o) => olhoVazio(ctx, R, o, k, 'rgba(160,240,255,A)'));
-      if (k > 0) {
-        ctx.save();
-        ctx.filter = `blur(${Math.max(1, R.fw * 0.01)}px)`;
-        caminhoTela(ctx, R, BOCA, 1.15, 1.6);
-        ctx.fillStyle = `rgba(0,0,8,${0.95 * k})`;
-        ctx.fill();
-        ctx.restore();
-      }
-    },
-  },
-  {
-    id: 'caveira', nome: 'CAVEIRA', emoji: '💀', cor: '#f2f2f2', brilho: [1.0, 0.4, 0.8],
-    frase: 'SÓ O OSSO', som: 'chocalho',
-    filtro: (a) => `saturate(${1 - 0.7 * a}) contrast(${1 + 0.25 * a}) brightness(${1 - 0.15 * a})`,
-    pintar: pintarCaveira,
-    depois(ctx, R, a) {
-      R.olhos.forEach((o) => olhoVazio(ctx, R, o, fase(a, 0.35, 0.4), 'rgba(255,255,255,A)'));
-    },
-  },
-  {
-    id: 'palhaco', nome: 'PALHAÇO', emoji: '🤡', cor: '#ff4fd8', brilho: [1.0, 0.2, 0.3],
-    frase: 'HORA DO SHOW', som: 'risada',
-    filtro: (a) => `saturate(${1 + 0.1 * a}) contrast(${1 + 0.2 * a}) brightness(${1 - 0.1 * a})`,
+    id: 'palhaco', nome: 'PALHAÇO', emoji: '🤡', cor: '#ff7a1a', brilho: [1.0, 0.35, 0.05],
+    frase: 'AQUI TODOS FLUTUAM', som: 'risada',
+    filtro: (a) => `saturate(${1 - 0.3 * a}) contrast(${1 + 0.3 * a}) brightness(${1 - 0.2 * a})`,
     pintar: pintarPalhaco,
     antes(ctx, R, a) { cabeloPalhaco(ctx, R, a); },
     depois(ctx, R, a, t) {
-      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.6, 0.4) * 0.8, 'rgba(255,210,0,A)', 'ponto', t));
+      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.45, 0.4), 'rgba(255,170,0,A)', 'ponto', t));
+      dentes(ctx, R, fase(a, 0.55, 0.35));
+      [[61, 0.6], [291, 0.68], [17, 0.75]].forEach(([p, ini], i) => gota(ctx, R, p, 0.22, 0.014, fase(a, ini, 1 - ini), t, i));
+    },
+  },
+  {
+    id: 'nosferatu', nome: 'NOSFERATU', emoji: '🦇', cor: '#ff1f3d', brilho: [1.0, 0.1, 0.2],
+    frase: 'SEU SANGUE É MEU', som: 'morcegos',
+    filtro: (a) => `saturate(${1 - 0.85 * a}) contrast(${1 + 0.35 * a}) brightness(${1 - 0.2 * a})`,
+    pintar: pintarNosferatu,
+    antes(ctx, R, a) { orelhasNosferatu(ctx, R, a); },
+    depois(ctx, R, a, t) {
+      R.olhos.forEach((o) => olhoBrilhante(ctx, R, o, fase(a, 0.35, 0.4), 'rgba(230,20,40,A)', 'fenda', t));
+      // dentes de rato: dois incisivos compridos no meio da boca
+      const k = fase(a, 0.5, 0.35);
+      if (R.boca > 0.03) dentes(ctx, R, k, DENTE_PODRE, 0.035, 0.022);
+      if (k > 0) [82, 312].forEach((i) => presa(ctx, R, R.P(i), R.fh * 0.11 * k, R.fw * 0.055, 1, DENTE_RATO));
+      gota(ctx, R, 17, 0.2, 0.014, fase(a, 0.7, 0.3), t, 0);
+    },
+  },
+  {
+    id: 'cadaver', nome: 'CADÁVER', emoji: '💀', cor: '#e8e0cc', brilho: [1.0, 0.15, 0.1],
+    frase: 'A CARNE JÁ ERA', som: 'lamento',
+    filtro: (a) => `saturate(${1 - 0.65 * a}) contrast(${1 + 0.25 * a}) brightness(${1 - 0.15 * a})`,
+    pintar: pintarCadaver,
+    depois(ctx, R, a, t) {
+      const k = fase(a, 0.3, 0.4);
+      olhoLeitoso(ctx, R, R.olhos[0], k);
+      olhoVazio(ctx, R, R.olhos[1], k, 'rgba(255,40,20,A)');
+      [[61, 0.45, 0.24], [17, 0.6, 0.3]].forEach(([p, ini, comp], i) => gota(ctx, R, p, comp, 0.016, fase(a, ini, 1 - ini), t, i));
     },
   },
 ];

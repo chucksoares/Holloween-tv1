@@ -1,6 +1,7 @@
-import { FaceLandmarker, FilesetResolver, ImageSegmenter } from './vendor/vision_bundle.mjs';
+import { FaceLandmarker, FilesetResolver, GestureRecognizer, ImageSegmenter } from './vendor/vision_bundle.mjs';
 import { criarRenderizador } from './render.js';
 import { MONSTROS, criarTexturas, geometria, mulberry32, deformarRosto } from './monstros.js';
+import { desenharQR } from './qr.js';
 
 // ============================ CONFIGURAÇÃO ============================
 const CONFIG = {
@@ -9,11 +10,13 @@ const CONFIG = {
   dataFicticia: '31 OUT 1996',         // data "da fita" exibida na tela
   segundosTransformacao: 6,            // tempo até a transformação completa
   segundosRoleta: 2.8,                 // duração do sorteio do monstro
-  segundosPreviewFoto: 8,              // quanto tempo a foto fica na tela
+  segundosPreviewFoto: 45,             // quanto tempo a foto (com o QR code) fica na tela
   maxRostos: 4,
   trocarCenarioPorPessoa: true,        // sorteia um cenário novo a cada pessoa que chega
   logo: 'marca/logo-tv1.png',          // logo exibido na tela e nas fotos
   intensidadeDeformacao: 1,            // quanto o formato do rosto muda (0 = nada, 1 = normal, 1.5 = exagerado)
+  fotoPorGesto: true,                  // 👍 ou ✌️ na frente da câmera também tira a foto
+  segundosGesto: 0.8,                  // quanto tempo segurar o gesto para disparar
 };
 
 const MODOS = ['VHS', 'PS1', 'CCTV'];
@@ -34,6 +37,17 @@ const fotoEl = $('foto');
 const fotoImg = $('fotoImg');
 const fotoMsg = $('fotoMsg');
 const desempenhoEl = $('desempenho');
+const controlesEl = $('controles');
+const btnMonstro = $('btnMonstro');
+const btnFoto = $('btnFoto');
+const btnFundo = $('btnFundo');
+const nomeMonstroEl = $('nomeMonstro');
+const nomeFundoEl = $('nomeFundo');
+const qrPainel = $('qrPainel');
+const qrCanvas = $('qr');
+const btnFecharFoto = $('fecharFoto');
+const fotoTempoEl = $('fotoTempo');
+const dicaGestoEl = $('dicaGesto');
 
 let W = 1280, H = 720;
 const novoCanvas = () => { const c = document.createElement('canvas'); return [c, c.getContext('2d')]; };
@@ -46,6 +60,7 @@ const [rastro, rc] = novoCanvas();                // rastro do fantasma
 // =============================== ESTADO ===============================
 let landmarker = null;
 let segmentador = null;
+let reconhecedorGestos = null;
 let render = null;
 let texturas = [];
 let logoImg = null;
@@ -69,6 +84,9 @@ let monstroAtual = 0;
 let modoMonstro = 'roleta';  // 'roleta' sorteia a cada pessoa; 'fixo' usa o escolhido nas teclas 1-6
 const roleta = { ativa: false, t0: 0, de: 0, passos: 0, exibido: 0 };
 const foto = { fase: 'ocioso', t0: 0, ultimoNumero: -1 };
+// precisaSoltar: depois de uma foto por gesto, a mão tem que sair antes de valer de novo
+const gesto = { nome: null, desde: 0, precisaSoltar: false };
+const GESTOS_FOTO = { Thumb_Up: '👍', Victory: '✌️' };
 
 try { modo = Math.min(2, Math.max(0, parseInt(localStorage.getItem('zumbi-modo') || '0', 10) || 0)); } catch {}
 
@@ -133,10 +151,10 @@ const som = {
     r.connect(this.filtro('lowpass', 600)).connect(this.envelope(0.3, 0.005, 0.5));
     r.start();
   },
-  rosnado() {
-    const dur = 1.8, n = this.agora();
-    const o = this.osc('sawtooth', 85);
-    o.frequency.linearRampToValueAtTime(55, n + dur);
+  rosnado(freq = 85, dur = 1.8) {
+    const n = this.agora();
+    const o = this.osc('sawtooth', freq);
+    o.frequency.linearRampToValueAtTime(freq * 0.65, n + dur);
     const lfo = this.osc('sine', 9), lfoG = this.ctx.createGain();
     lfoG.gain.value = 22;
     lfo.connect(lfoG).connect(o.frequency);
@@ -160,18 +178,27 @@ const som = {
     o.connect(this.envelope(0.04, 0.2, 1.2));
     o.start(); o.stop(this.agora() + 1.2);
   },
-  uivo() {
-    const n = this.agora(), dur = 2.6;
-    const o = this.osc('sawtooth', 300);
-    o.frequency.setValueAtTime(300, n);
-    o.frequency.exponentialRampToValueAtTime(720, n + 0.6);
-    o.frequency.linearRampToValueAtTime(660, n + 1.7);
-    o.frequency.exponentialRampToValueAtTime(330, n + dur);
-    const lfo = this.osc('sine', 5.5), lfoG = this.ctx.createGain();
-    lfoG.gain.value = 14;
-    lfo.connect(lfoG).connect(o.frequency);
-    o.connect(this.filtro('bandpass', 900, 1.2)).connect(this.envelope(0.35, 0.25, dur));
-    o.start(); lfo.start(); o.stop(n + dur); lfo.stop(n + dur);
+  // rosnado grave de demônio + sussurro
+  demonio() {
+    this.rosnado(42, 2.6);
+    this.sibilo();
+  },
+  // guincho agudo e estridente
+  grito() {
+    const n = this.agora(), dur = 1.6;
+    [900, 1210].forEach((f) => {
+      const o = this.osc('sawtooth', f);
+      o.frequency.exponentialRampToValueAtTime(f * 1.5, n + 0.4);
+      o.frequency.exponentialRampToValueAtTime(f * 0.8, n + dur);
+      const lfo = this.osc('sine', 13), lfoG = this.ctx.createGain();
+      lfoG.gain.value = f * 0.04;
+      lfo.connect(lfoG).connect(o.frequency);
+      o.connect(this.filtro('bandpass', 2200, 1.5)).connect(this.envelope(0.18, 0.05, dur));
+      o.start(); lfo.start(); o.stop(n + dur); lfo.stop(n + dur);
+    });
+    const r = this.ruido(dur);
+    r.connect(this.filtro('bandpass', 3000, 0.8)).connect(this.envelope(0.12, 0.05, dur));
+    r.start();
   },
   lamento() {
     const n = this.agora(), dur = 2.8;
@@ -192,11 +219,14 @@ const som = {
       o.start(); lfo.start(); o.stop(n + dur); lfo.stop(n + dur);
     });
   },
-  chocalho() {
-    for (let i = 0; i < 14; i++) {
-      const r = this.ruido(0.03);
-      r.connect(this.filtro('bandpass', 1200 + Math.random() * 1500, 4)).connect(this.envelope(0.5, 0.002, 0.03, i * 0.06 + Math.random() * 0.03));
-      r.start(this.agora() + i * 0.06);
+  morcegos() {
+    for (let i = 0; i < 10; i++) {
+      const ini = i * 0.1 + Math.random() * 0.05, f = 2600 + Math.random() * 1800;
+      const o = this.osc('sine', f);
+      o.frequency.setValueAtTime(f, this.agora() + ini);
+      o.frequency.exponentialRampToValueAtTime(f * 1.6, this.agora() + ini + 0.05);
+      o.connect(this.envelope(0.12, 0.005, 0.06, ini));
+      o.start(this.agora() + ini); o.stop(this.agora() + ini + 0.07);
     }
   },
   risada() {
@@ -488,7 +518,9 @@ function desenharOSD() {
   }
 
   sx.textBaseline = 'middle';
-  if (foto.fase === 'contagem') {
+  if (foto.fase === 'ocioso' && gesto.nome) {
+    desenharGesto();
+  } else if (foto.fase === 'contagem') {
     const n = 3 - Math.floor(t - foto.t0);
     const frac = (t - foto.t0) % 1;
     textoTerror(String(Math.max(1, n)), W / 2, H / 2, '#ffffff', 300 * (1.15 - frac * 0.25));
@@ -501,7 +533,7 @@ function desenharOSD() {
   } else if (foto.fase === 'ocioso' && !temRosto) {
     desenharChamada();
   } else if (foto.fase === 'ocioso' && infeccao >= 1 && pisca) {
-    texto('APERTE ESPAÇO PARA A FOTO', W / 2, H * 0.88, '#ffffff', 'center', 48);
+    texto(reconhecedorGestos ? 'FAÇA 👍 OU ✌️ PARA TIRAR A FOTO' : 'APERTE "TIRAR FOTO" LÁ EMBAIXO', W / 2, H * 0.74, '#ffffff', 'center', 48);
   }
   sx.restore();
 }
@@ -612,8 +644,10 @@ function atualizarFoto() {
     const n = 3 - Math.floor(t - foto.t0);
     if (n !== foto.ultimoNumero && n > 0) { foto.ultimoNumero = n; som.bip(n === 1 ? 1320 : 880); }
     if (t - foto.t0 >= 3) foto.fase = 'disparo';
-  } else if (foto.fase === 'preview' && t - foto.t0 > CONFIG.segundosPreviewFoto) {
-    fecharPreview();
+  } else if (foto.fase === 'preview') {
+    const resta = Math.ceil(CONFIG.segundosPreviewFoto - (t - foto.t0));
+    if (resta <= 0) fecharPreview();
+    else escrever(fotoTempoEl, `(${resta}s)`);
   }
 }
 
@@ -625,9 +659,68 @@ function iniciarFoto() {
   }
 }
 
+// 👍 ou ✌️ segurado por alguns instantes inicia a contagem da foto
+function atualizarGesto(agora) {
+  if (foto.fase !== 'ocioso' || roleta.ativa || semRostoHa >= 0.8) { gesto.nome = null; return; }
+  const res = reconhecedorGestos.recognizeForVideo(video, agora);
+  const achado = (res.gestures || []).map((g) => g[0]).find((g) => g && GESTOS_FOTO[g.categoryName] && g.score > 0.6);
+  if (!achado) { gesto.nome = null; gesto.precisaSoltar = false; return; }
+  if (gesto.precisaSoltar) return;
+  if (gesto.nome !== achado.categoryName) { gesto.nome = achado.categoryName; gesto.desde = t; }
+  if (t - gesto.desde >= CONFIG.segundosGesto) {
+    gesto.nome = null;
+    gesto.precisaSoltar = true;
+    iniciarFoto();
+  }
+}
+
+function desenharGesto() {
+  const s = esc();
+  const k = Math.min(1, (t - gesto.desde) / CONFIG.segundosGesto);
+  const x = W / 2, y = H * 0.5, r = 120 * s;
+  sx.save();
+  sx.fillStyle = 'rgba(0,0,0,0.55)';
+  sx.beginPath(); sx.arc(x, y, r, 0, Math.PI * 2); sx.fill();
+  sx.strokeStyle = '#ff2b2b';
+  sx.lineWidth = 14 * s;
+  sx.lineCap = 'round';
+  sx.beginPath(); sx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); sx.stroke();
+  sx.restore();
+  emoji(GESTOS_FOTO[gesto.nome], x, y, 130);
+  texto('SEGURA AÍ...', x, y + r + 50 * s, '#ffffff', 'center', 48);
+}
+
 function fecharPreview() {
   fotoEl.classList.add('oculto');
   foto.fase = 'ocioso';
+}
+
+// ======================= BOTÕES NA TELA =======================
+function proximoMonstro() {
+  roleta.ativa = false;
+  monstroAtual = (monstroAtual + 1) % MONSTROS.length;
+  glitch = 1;
+  som.estatica(0.3);
+  if (infeccao >= 1) { transformadoEm = t; som.monstro(MONSTROS[monstroAtual].som); }
+}
+
+// percorre os cenários e, no fim, o fundo real da câmera
+function proximoFundo() {
+  if (!cenarios.length) return;
+  trocarCenario(cenarioAtual + 1 < cenarios.length ? cenarioAtual + 1 : -1);
+  som.estatica(0.3);
+}
+
+const nomeFundo = () => (cenarioAtual >= 0 && cenarios[cenarioAtual] ? cenarios[cenarioAtual].nome : 'CÂMERA REAL');
+
+function escrever(el, txt) { if (el.textContent !== txt) el.textContent = txt; }
+
+function atualizarControles() {
+  controlesEl.classList.toggle('oculto', foto.fase !== 'ocioso');
+  const m = monstro();
+  escrever(nomeMonstroEl, `${m.emoji} ${m.nome}`);
+  escrever(nomeFundoEl, nomeFundo());
+  btnFoto.disabled = roleta.ativa;
 }
 
 function montarFoto() {
@@ -686,19 +779,30 @@ async function capturarFoto() {
   foto.fase = 'preview';
   foto.t0 = t;
   fotoImg.src = dados;
-  fotoMsg.textContent = 'SALVANDO...';
+  fotoMsg.textContent = 'GERANDO SEU QR CODE...';
+  qrPainel.classList.add('carregando');
+  qrPainel.classList.remove('sem-qr');
   fotoEl.classList.remove('oculto');
   try {
     const r = await fetch('api/foto', { method: 'POST', body: dados });
     if (!r.ok) throw new Error(await r.text());
-    fotoMsg.textContent = 'FOTO SALVA ✔';
+    const { url } = await r.json();
+    if (url) {
+      desenharQR(qrCanvas, url);
+      qrPainel.classList.remove('carregando');
+      fotoMsg.textContent = 'O celular precisa estar no mesmo Wi-Fi deste computador';
+    } else {
+      qrPainel.classList.add('sem-qr');
+      fotoMsg.textContent = 'FOTO SALVA ✔ (sem rede para o QR code)';
+    }
   } catch (e) {
     console.warn('Falha ao salvar no servidor, baixando pelo navegador:', e);
     const a = document.createElement('a');
     a.href = dados;
     a.download = `monstro-${Date.now()}.jpg`;
     a.click();
-    fotoMsg.textContent = 'FOTO BAIXADA ✔';
+    qrPainel.classList.add('sem-qr');
+    fotoMsg.textContent = 'FOTO BAIXADA NESTE COMPUTADOR ✔';
   }
 }
 
@@ -717,6 +821,8 @@ function quadro(agora) {
     suavizar(res.faceLandmarks || []);
     // o recorte da pessoa muda pouco entre quadros: roda em quadros alternados
     if (segmentador && cenarioAtual >= 0 && (quadrosVideo % 2 === 0 || !mascaraPronta)) atualizarMascaraPessoa(agora);
+    // gestos só a cada 3 quadros: basta para perceber a mão parada e economiza processamento
+    if (reconhecedorGestos && quadrosVideo % 3 === 1) atualizarGesto(agora);
   }
   const t1 = performance.now();
   // o formato do rosto muda junto com a transformação
@@ -736,6 +842,7 @@ function quadro(agora) {
     brilho: m.brilho, tempo: t, modo, glitch,
   });
   if (foto.fase === 'disparo') capturarFoto();
+  atualizarControles();
   medirDesempenho(agora, t1 - t0, performance.now() - t1);
 }
 
@@ -786,6 +893,19 @@ async function carregarModelos() {
     outputCategoryMask: false,
     outputConfidenceMasks: true,
   }));
+  if (CONFIG.fotoPorGesto) {
+    // opcional: se o modelo de gestos faltar ou falhar, o espelho segue funcionando só com os botões
+    try {
+      reconhecedorGestos = await criarComFallback(GestureRecognizer, arquivos, (delegate) => ({
+        baseOptions: { modelAssetPath: 'vendor/gesture_recognizer.task', delegate },
+        runningMode: 'VIDEO',
+        numHands: 2,
+      }));
+      dicaGestoEl.classList.remove('oculto');
+    } catch (e) {
+      console.warn('Reconhecimento de gestos indisponível:', e);
+    }
+  }
 }
 
 async function iniciarCamera() {
@@ -917,8 +1037,12 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'd') { mostrarDesempenho = !mostrarDesempenho; desempenhoEl.classList.toggle('oculto', !mostrarDesempenho); }
   else if (k === 'escape' && foto.fase === 'preview') fecharPreview();
 });
-tela.addEventListener('click', iniciarFoto);
-fotoEl.addEventListener('click', () => { if (t - foto.t0 > 1.5) fecharPreview(); });
+// botões: tiram o foco depois do clique para o ESPAÇO não "clicar" de novo no último botão usado
+const botao = (el, acao) => el.addEventListener('click', (e) => { e.currentTarget.blur(); acao(); });
+botao(btnMonstro, proximoMonstro);
+botao(btnFoto, iniciarFoto);
+botao(btnFundo, proximoFundo);
+botao(btnFecharFoto, fecharPreview);
 
 let timerCursor;
 window.addEventListener('mousemove', () => {
