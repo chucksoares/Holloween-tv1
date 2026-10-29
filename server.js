@@ -11,9 +11,7 @@ const crypto = require('crypto');
 const PORT = 8031;
 const ROOT = __dirname;
 const FOTOS = path.join(ROOT, 'fotos');
-const CENARIOS = path.join(ROOT, 'cenarios');
 fs.mkdirSync(FOTOS, { recursive: true });
-fs.mkdirSync(CENARIOS, { recursive: true });
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -95,7 +93,7 @@ function paginaFoto(nome) {
     display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 16px 32px; text-align: center; }
   h1 { margin: 0; font-family: 'Creepster', Impact, sans-serif; font-weight: normal; font-size: 2.6rem; line-height: 1;
     color: #ff2b2b; text-shadow: 0 0 18px rgba(255,0,0,.6); }
-  img { width: 100%; max-width: 720px; border: 3px solid #fff; border-radius: 4px; box-shadow: 0 0 30px rgba(255,0,0,.35); }
+  img { width: 100%; max-width: 480px; transform: rotate(-2deg); box-shadow: 0 10px 30px rgba(0,0,0,.7), 0 0 30px rgba(255,0,0,.25); }
   a { display: inline-block; background: #ff2b2b; color: #120000; font-weight: 800; font-size: 1.3rem;
     padding: 16px 32px; border-radius: 10px; text-decoration: none; }
   p { margin: 0; color: #a0a0a0; font-size: .95rem; max-width: 34ch; }
@@ -135,13 +133,6 @@ http.createServer((req, res) => {
   if (!doProprioPC(req) && !LIBERADOS_REDE.includes(url.pathname)) { res.writeHead(403).end(); return; }
 
   if (req.method === 'POST' && url.pathname === '/api/foto') return salvarFoto(req, res);
-  if (req.method === 'GET' && url.pathname === '/api/cenarios') {
-    fs.readdir(CENARIOS, (err, arquivos) => {
-      const lista = (arquivos || []).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort();
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }).end(JSON.stringify(lista));
-    });
-    return;
-  }
   if (req.method !== 'GET') { res.writeHead(405).end(); return; }
 
   let p = decodeURIComponent(url.pathname);
